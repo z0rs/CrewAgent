@@ -19,9 +19,9 @@ The pipeline is sequential:
 
 ## Current Burp Tooling Model
 
-This repository is now aligned to the Burp MCP capabilities that are actually available in the connected Burp environment:
+This repository is aligned to the Burp MCP capabilities available in the connected Burp environment:
 
-- Proxy and review:
+- **Proxy and review:**
   - `get_proxy_http_history`
   - `get_proxy_http_history_regex`
   - `get_proxy_websocket_history`
@@ -30,35 +30,34 @@ This repository is now aligned to the Burp MCP capabilities that are actually av
   - `output_project_options`
   - `output_user_options`
   - `set_proxy_intercept_state`
-- Request execution:
+- **Request execution:**
   - `send_http1_request`
   - `send_http2_request`
   - `create_repeater_tab`
-  - `send_to_intruder`
+  - `send_to_intruder` (payloads are forwarded to the MCP server)
   - `get_active_editor_contents`
   - `set_active_editor_contents`
-- Collaborator and helpers:
+- **Collaborator and helpers:**
   - `generate_collaborator_payload`
   - `get_collaborator_interactions`
+  - `poll_collaborator_with_wait` (wait duration configurable via `COLLABORATOR_WAIT_SECS` env var)
   - `generate_random_string`
-  - `base64_encode`
-  - `base64_decode`
-  - `url_encode`
-  - `url_decode`
-- Project wrappers:
+  - `base64_encode` / `base64_decode`
+  - `url_encode` / `url_decode`
+- **Autorize-style wrappers:**
   - `autorize_check`
   - `autorize_multi_role_check`
-  - `poll_collaborator_with_wait`
 
-Important limitations:
+**Important limitations:**
 
 - `send_to_intruder` should be treated as a handoff/setup action for manual Intruder review, not as a full automated fuzzing engine with result harvesting.
 - Findings are only as good as the Burp history and scope you prepared beforehand.
-- If Burp scope is empty or history is empty, the analyst should report that cleanly instead of inventing findings.
+- If Burp scope is empty or history is empty, the analyst reports that cleanly instead of inventing findings.
+- The Autorize wrapper tools perform session-swap testing via `send_http1_request`; they require you to capture and supply the relevant session tokens yourself.
 
 ## Architecture
 
-```text
+```
 [Burp HTTP History + Scanner + Scope]
                |
                v
@@ -76,7 +75,7 @@ Important limitations:
       - repeater setup
       - intruder handoff
       - collaborator checks
-      - autorize checks
+      - autorize session-swap checks
                |
                v
   [Agent 3: lead_pentester]
@@ -92,38 +91,47 @@ Important limitations:
 
 ## Project Structure
 
-```text
+```
 pentest_crew/
-├── .env
+├── .env.example
+├── .gitignore
 ├── Guideline.md
 ├── README.md
 ├── pyproject.toml
-└── src/
-    └── pentest_crew/
-        ├── main.py
-        ├── crew.py
-        ├── config/
-        │   ├── agents.yaml
-        │   └── tasks.yaml
-        └── tools/
-            ├── __init__.py
-            ├── autorize_tools.py
-            ├── burp_collaborator_tools.py
-            ├── burp_mcp_client.py
-            ├── burp_proxy_tools.py
-            └── burp_request_tools.py
+├── src/
+│   └── pentest_crew/
+│       ├── main.py
+│       ├── crew.py
+│       ├── config/
+│       │   ├── agents.yaml
+│       │   └── tasks.yaml
+│       └── tools/
+│           ├── __init__.py
+│           ├── autorize_tools.py
+│           ├── burp_collaborator_tools.py
+│           ├── burp_mcp_client.py
+│           ├── burp_proxy_tools.py
+│           └── burp_request_tools.py
+└── tests/
+    ├── __init__.py
+    ├── test_autorize_tools.py
+    ├── test_burp_request_tools.py
+    └── test_main.py
 ```
 
 ## Requirements
 
 ### 1. Python
 
-- Python `>=3.10,<3.14`
+- Python `>=3.10,<3.12`
 
 Install dependencies:
 
 ```bash
-uv pip install -e .
+python -m venv .venv
+source .venv/bin/activate  # Linux/macOS
+# .venv\Scripts\activate    # Windows
+pip install -e .
 ```
 
 ### 2. Burp Suite
@@ -136,7 +144,7 @@ Recommended setup:
 - Proxy listener running
 - Project scope configured before analysis
 
-The connected Burp instance used during review had:
+The connected Burp instance used during development had:
 
 - MCP Server extension loaded
 - Autorize extension loaded
@@ -145,64 +153,52 @@ The connected Burp instance used during review had:
 
 ### 3. Environment Variables
 
-Copy and edit:
-
 ```bash
 cp .env.example .env
+# then edit .env with your real API keys and engagement settings
 ```
 
-Example:
-
 ```env
-GOOGLE_API_KEY=your_gemini_key
-OPENAI_API_KEY=your_openai_key
-ANTHROPIC_API_KEY=your_anthropic_key
+# LLM API Keys
+GOOGLE_API_KEY=your_gemini_key_here
+OPENAI_API_KEY=your_openai_key_here
+ANTHROPIC_API_KEY=your_anthropic_key_here
 
+# Burp MCP
 BURP_MCP_HOST=127.0.0.1
 BURP_MCP_PORT=9876
 
+# Engagement
 ENGAGEMENT_ID=ENG-2026-001
 TARGET_URL=https://target.example.com
 CLIENT_NAME=Example Corp
 TEST_TYPE=greybox
 TESTER_NAME=Security Team
+REPORT_OUTPUT_DIR=./reports
+
+# Optional tuning
+COLLABORATOR_WAIT_SECS=30
 ```
 
-## Recommended Workflow
-
-1. Configure Burp scope for the engagement.
-2. Browse the target manually through Burp and populate HTTP history.
-3. Optionally run Burp Scanner on approved scope.
-4. If you want access control testing, prepare Autorize with at least two sessions.
-5. Make sure Burp intercept is not blocking the run.
-6. Run the crew.
-
-## Running
-
-Using CrewAI CLI:
+### 4. Running the Crew
 
 ```bash
-crewai run
-```
-
-Using Python directly:
-
-```bash
+# Via main.py (recommended — handles report path dynamically)
 python src/pentest_crew/main.py
-```
 
-With inline overrides:
+# With inline overrides
+ENGAGEMENT_ID=ENG-001 TARGET_URL=https://app.target.com python src/pentest_crew/main.py
 
-```bash
-ENGAGEMENT_ID=ENG-001 TARGET_URL=https://app.target.com crewai run
+# Via CrewAI CLI
+crewai run
 ```
 
 ## Expected Outputs
 
-- `reports/pentest_report_<engagement_id>.md`
-- `logs/pentest_crew_log.txt`
+- `reports/pentest_report_<engagement_id>.md` — final client-ready report
+- `logs/pentest_crew_log.txt` — crew execution audit log
 
-Convert the Markdown report if needed:
+Convert to PDF or DOCX if needed:
 
 ```bash
 pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.pdf
@@ -213,97 +209,80 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 
 ### `http_analyst`
 
-Tools:
-
-- `output_project_options`
-- `get_proxy_http_history`
-- `get_proxy_http_history_regex`
-- `get_proxy_websocket_history`
-- `get_proxy_websocket_history_regex`
-- `get_scanner_issues`
-- `base64_decode`
-- `url_decode`
-
-Purpose:
-
-- confirm scope
-- assess captured traffic
-- search for candidate patterns
-- assign WSTG-oriented action routing
+- `output_project_options` — confirm scope
+- `get_proxy_http_history` — ingest traffic
+- `get_proxy_http_history_regex` — pattern search
+- `get_proxy_websocket_history` / `get_proxy_websocket_history_regex` — WS traffic
+- `get_scanner_issues` — scanner cross-reference
+- `base64_decode` / `url_decode` — decode encoded params/tokens for analysis
 
 ### `validation_executor`
 
-Tools:
-
-- `set_proxy_intercept_state`
-- `send_http1_request`
-- `send_http2_request`
-- `create_repeater_tab`
-- `send_to_intruder`
-- `get_active_editor_contents`
-- `set_active_editor_contents`
-- `generate_collaborator_payload`
-- `get_collaborator_interactions`
-- `poll_collaborator_with_wait`
-- `generate_random_string`
-- `base64_encode`
-- `base64_decode`
-- `url_encode`
-- `url_decode`
-- `autorize_check`
-- `autorize_multi_role_check`
-
-Purpose:
-
-- replay baseline requests
-- run low-noise validation
-- prepare Intruder cases for manual follow-up
-- confirm OOB callbacks
-- test authorization boundaries
+- `send_http1_request` / `send_http2_request` — replay with mutations
+- `create_repeater_tab` — organize tests by finding ID
+- `send_to_intruder` — handoff to Intruder for manual follow-up (payloads forwarded)
+- `get_active_editor_contents` / `set_active_editor_contents` — editor manipulation
+- `generate_collaborator_payload` / `get_collaborator_interactions` / `poll_collaborator_with_wait` — OOB testing
+- `generate_random_string` / `base64_encode` / `base64_decode` / `url_encode` / `url_decode` — encoding
+- `autorize_check` / `autorize_multi_role_check` — session-swap authorization testing
+- `set_proxy_intercept_state` — disable intercept during automated testing
 
 ### `lead_pentester`
 
-Tools:
-
-- `get_scanner_issues`
-- `get_proxy_http_history_regex`
-- `get_collaborator_interactions`
-- `get_active_editor_contents`
-- `output_project_options`
-- `base64_decode`
-- `url_decode`
-
-Purpose:
-
-- cross-check evidence
-- enforce QA
-- downgrade or reject weak findings
-- produce scoring and remediation content
+- `get_scanner_issues` — cross-reference automated findings
+- `get_proxy_http_history_regex` — independent re-examination
+- `get_collaborator_interactions` — re-verify OOB callbacks
+- `get_active_editor_contents` — spot-check specific requests
+- `output_project_options` — verify scope compliance
+- `base64_decode` / `url_decode` — decode evidence tokens
 
 ### `report_generator`
 
-Tools:
+No Burp tools — consumes structured JSON from previous agents only.
 
-- none
+## Recommended Workflow
 
-Purpose:
+1. Configure Burp scope for the engagement.
+2. Browse the target manually through Burp — populate HTTP history deeply.
+3. Optionally run Burp Scanner on approved scope.
+4. If you want access control testing, prepare Autorize with at least two sessions (victim + attacker account).
+5. Ensure Burp intercept is disabled before running the crew.
+6. Run the crew.
+7. Review the generated report — validate all findings manually before delivery.
 
-- convert approved findings into a client-ready report
+## Testing
+
+Run the test suite:
+
+```bash
+.venv/bin/python -m pytest tests/ -v
+```
+
+Current coverage:
+
+- Session token swap logic (cookie / bearer / custom header)
+- Auth header stripping and CRLF preservation
+- Autorize body normalization (dynamic ID/timestamp stripping)
+- HTTP request parsing (`_split_raw_request`)
+- HTTP/2 pseudo-header construction
+- Intruder payload routing
+- Environment variable validation and input building
 
 ## Prompt and Task Design Notes
 
-The current configuration in `src/pentest_crew/config/` is intentionally conservative:
+The configuration is intentionally conservative:
 
 - no forced minimum finding count
 - explicit handling for empty Burp scope or empty history
-- action names now match realistic execution paths
-- Intruder is treated as review/handoff, not fake automation
-- unsupported cases are routed to `MANUAL_REVIEW` or `NEEDS_ESCALATION`
+- findings require observable evidence — no theoretical flagging
+- Intruder is treated as review/handoff, not automated fuzzing
+- unsupported cases route to `MANUAL_REVIEW` or `NEEDS_ESCALATION`
+- Autorize bypass detection uses relative body delta (< 2%) + structural content matching to minimize false negatives
 
 ## References
 
-- OWASP WSTG v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
-- AllAboutBugBounty: https://github.com/daffainfo/AllAboutBugBounty
+- [OWASP WSTG v4.2](https://owasp.org/www-project-web-security-testing-guide/v42/)
+- [AllAboutBugBounty](https://github.com/daffainfo/AllAboutBugBounty)
 
 ## Legal Notice
 

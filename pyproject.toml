@@ -1,6 +1,6 @@
 [build-system]
 requires = ["setuptools>=68.0.0", "wheel"]
-build-backend = "setuptools.backends.legacy:build"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "pentest_crew"
@@ -21,3 +21,8 @@ pentest_crew = "pentest_crew.main:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_functions = "test_*"

@@ -1,0 +1,33 @@
+# Byte-compiled / optimized
+__pycache__/
+*.py[cod]
+*.pyc
+
+# Environments
+.env
+.env.local
+.env.*.local
+
+# Logs
+logs/
+*.log
+
+# Reports
+reports/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# uv / python
+.venv/
+venv/
+*.egg-info/
+dist/
+build/

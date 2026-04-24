@@ -4,9 +4,9 @@ This document is a practical testing guideline for using this repository during 
 
 References:
 
-- OWASP WSTG v4.2: https://owasp.org/www-project-web-security-testing-guide/v42/
-- OWASP Web Application Security Testing index: https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/
-- AllAboutBugBounty: https://github.com/daffainfo/AllAboutBugBounty
+- [OWASP WSTG v4.2](https://owasp.org/www-project-web-security-testing-guide/v42/)
+- [OWASP Web Application Security Testing index](https://owasp.org/www-project-web-security-testing-guide/v42/4-Web_Application_Security_Testing/)
+- [AllAboutBugBounty](https://github.com/daffainfo/AllAboutBugBounty)
 
 ## Purpose
 
@@ -42,17 +42,17 @@ Recommended flow:
 
 ## Prepare Burp Before Running the Crew
 
-Minimum preparation:
+**Minimum preparation:**
 
 - define target scope
 - browse key application flows
 - authenticate as at least one normal user
 - capture login, logout, profile, object access, and state-changing requests
 
-Recommended additional preparation:
+**Recommended additional preparation:**
 
 - browse as multiple roles if allowed
-- configure Autorize for access control checks
+- prepare two or more session tokens for the Autorize session-swap checks (victim account + attacker/lower-privilege account)
 - run safe scanner coverage on allowed targets
 - keep notes on account IDs, object IDs, email addresses, and role differences
 
@@ -118,8 +118,7 @@ Capture requests that help downstream analysis:
 
 ### 1. Information Gathering
 
-Look for:
-
+**Look for:**
 - hostnames, subdomains, alternate environments
 - API versions
 - framework clues
@@ -127,8 +126,7 @@ Look for:
 - debug, staging, and internal routes
 - exposed configuration and backup files
 
-Burp signals:
-
+**Burp signals:**
 - unusual paths in history
 - comments in JavaScript responses
 - alternate hostnames in redirects
@@ -136,8 +134,7 @@ Burp signals:
 
 ### 2. Authentication
 
-Test for:
-
+**Test for:**
 - weak login flows
 - password reset abuse
 - alternate authentication paths
@@ -145,8 +142,7 @@ Test for:
 - missing brute force protection
 - weak MFA enforcement
 
-Useful captured requests:
-
+**Useful captured requests:**
 - login request
 - reset token submission
 - MFA challenge request
@@ -156,41 +152,38 @@ Useful captured requests:
 
 This is one of the highest-value areas for this project.
 
-Test for:
-
+**Test for:**
 - horizontal privilege escalation
 - vertical privilege escalation
 - missing object ownership checks
 - direct access to admin endpoints
 - role confusion across APIs and UI
 
-Best practice:
-
+**Best practice:**
 - capture the same workflow under multiple accounts
 - preserve object IDs and tenant IDs
-- use Autorize where possible
+- supply at least two session tokens to the `autorize_check` tool (victim + attacker)
 - note when a request succeeds with a different user token
+
+**Bypass detection approach:** The autorize wrapper uses relative body size delta (< 2%) combined with structural content comparison (after stripping dynamic values like user IDs, timestamps, and emails) to detect bypasses. This catches cases where responses are similar in length but contain another user's data.
 
 ### 4. Session Management
 
-Test for:
-
+**Test for:**
 - session fixation
 - predictable tokens
 - overly long-lived tokens
 - missing logout invalidation
 - cookie scope and security flag issues
 
-Useful evidence:
-
+**Useful evidence:**
 - `Set-Cookie` headers
 - token refresh endpoints
 - requests that continue working after logout or role change
 
 ### 5. Input Validation
 
-Test for:
-
+**Test for:**
 - SQLi
 - NoSQLi
 - XSS
@@ -199,16 +192,14 @@ Test for:
 - file inclusion
 - command injection indicators
 
-Best practice:
-
+**Best practice:**
 - start with low-noise payloads
 - compare baseline and mutated responses
 - note status changes, reflected data, error fragments, and content-length deltas
 
 ### 6. SSRF and OOB Testing
 
-Look for:
-
+**Look for:**
 - webhook URLs
 - import-by-URL features
 - avatar fetchers
@@ -216,17 +207,16 @@ Look for:
 - URL preview endpoints
 - XML processors
 
-Best practice:
-
-- use Collaborator
+**Best practice:**
+- use `generate_collaborator_payload` + `poll_collaborator_with_wait`
+- the wait duration is configurable via the `COLLABORATOR_WAIT_SECS` environment variable (default: 30s)
 - record parameter name and original value
 - repeat cautiously
 - treat DNS or HTTP callbacks as stronger evidence than timing only
 
 ### 7. File Upload
 
-Test for:
-
+**Test for:**
 - dangerous extensions
 - MIME confusion
 - content-type trust
@@ -234,8 +224,7 @@ Test for:
 - parser abuse
 - overwrite behavior
 
-Capture:
-
+**Capture:**
 - multipart requests
 - storage URLs
 - preview endpoints
@@ -243,8 +232,7 @@ Capture:
 
 ### 8. Business Logic
 
-Look for:
-
+**Look for:**
 - missing workflow sequencing
 - coupon abuse
 - price tampering
@@ -309,15 +297,13 @@ When writing findings:
 
 Use this repository after you have already done enough manual browsing to create meaningful Burp history.
 
-Strong fit:
-
+**Strong fit:**
 - triaging large Burp histories
 - routing requests to validation actions
 - reviewing authorization and OOB candidates
 - turning notes and evidence into a structured report
 
-Weak fit:
-
+**Weak fit:**
 - blind recon with no history
 - high-volume fuzzing campaigns
 - exploitation paths that require custom automation not exposed through Burp MCP
@@ -329,7 +315,7 @@ Weak fit:
 3. Create at least two accounts if allowed.
 4. Browse all important workflows.
 5. Mark requests that look identity-bound, role-bound, or callback-capable.
-6. Prepare Autorize sessions.
+6. Supply session tokens for the autorize session-swap checks.
 7. Run this project.
 8. Review candidate findings manually.
 9. Keep only evidence-backed issues.
