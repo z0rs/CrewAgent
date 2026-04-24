@@ -24,9 +24,35 @@ class TestSwapSessionToken:
             "\r\n"
         )
         result = _swap_session_token(raw, "cookie", "attacker_token", None)
-        # The regex replaces everything after "Cookie:" including "session= " prefix
-        assert "Cookie: attacker_token" in result
+        # New value replaces old, old value is consumed (space and all)
+        assert "attacker_token" in result
         assert "victim_token_here" not in result
+
+    def test_cookie_preserves_named_prefix(self):
+        """Named cookie prefix (PHPSESSID=, JSESSIONID=, etc.) must be preserved."""
+        raw = (
+            "GET /api/profile HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Cookie: PHPSESSID=abc123; session=xyz789\r\n"
+            "\r\n"
+        )
+        result = _swap_session_token(raw, "cookie", "hijacked", None)
+        assert "PHPSESSID=" in result  # prefix preserved
+        assert "hijacked" in result
+        assert "abc123" not in result
+        assert "session=xyz789" in result  # other cookie values preserved too
+
+    def test_cookie_without_prefix(self):
+        """When no named prefix exists, replacement still works cleanly."""
+        raw = (
+            "GET /api/profile HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Cookie: bare_token_value\r\n"
+            "\r\n"
+        )
+        result = _swap_session_token(raw, "cookie", "new_token", None)
+        assert "Cookie: bare_token_value" not in result
+        assert "new_token" in result
 
     def test_bearer_token_replacement(self):
         raw = (
@@ -38,6 +64,19 @@ class TestSwapSessionToken:
         result = _swap_session_token(raw, "bearer", "attacker_bearer", None)
         assert "Authorization: Bearer attacker_bearer" in result
         assert "victim_token_here" not in result
+
+    def test_bearer_jwt_with_underscores(self):
+        """JWT tokens contain underscores in all three segments — regex must handle them."""
+        jwt = "eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo0Mn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            f"Authorization: Bearer {jwt}\r\n"
+            "\r\n"
+        )
+        result = _swap_session_token(raw, "bearer", "attacker_jwt", None)
+        assert jwt not in result
+        assert "attacker_jwt" in result
 
     def test_custom_header_token_replacement(self):
         raw = (
@@ -58,7 +97,9 @@ class TestSwapSessionToken:
             "\r\n"
         )
         result = _swap_session_token(raw, "cookie", "new_value", None)
-        assert "cookie: new_value" in result.lower()
+        # Cookie header present with new value, old value gone
+        assert "new_value" in result
+        assert "old_value" not in result
 
     def test_no_matching_header_leaves_request_unchanged(self):
         raw = (

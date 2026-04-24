@@ -123,7 +123,7 @@ pentest_crew/
 
 ### 1. Python
 
-- Python `>=3.10,<3.12`
+- Python `>=3.10,<3.14`
 
 Install dependencies:
 
