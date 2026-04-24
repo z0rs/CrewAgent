@@ -3,6 +3,8 @@ test_autorize_tools.py
 ──────────────────────
 Unit tests for autorize_tools.py session-swap logic and bypass detection.
 """
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from pentest_crew.tools.autorize_tools import (
@@ -215,3 +217,75 @@ class TestNormalizedBodyMatch:
         a = '{"user": {"name": "Alice", "id": 42}}'
         b = '{"order": {"total": 100}}'
         assert AuthorizeCheckTool._normalized_body_match(a, b) is False
+
+
+class TestAuthorizeMultiRoleTool:
+    """Tests for AuthorizeMultiRoleTool error handling."""
+
+    def test_error_response_not_crash(self):
+        """MCP error dict must not cause KeyError or AttributeError."""
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer admin_token\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        mock_client.call.return_value = {
+            "error": "Cannot connect to Burp MCP server at 127.0.0.1:9876"
+        }
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens=[{"role": "admin", "token": "Bearer admin_token", "type": "bearer"}],
+            )
+
+        import json
+        parsed = json.loads(result)
+        assert parsed["access_matrix"][0]["error"] is not None
+        assert parsed["access_matrix"][0]["access_granted"] is False
+        assert parsed["access_matrix"][0]["status_code"] is None
+
+    def test_multiple_roles_one_error_continues(self):
+        """When one role fails, other roles are still tested."""
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer token\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        # First call fails, second succeeds
+        mock_client.call.side_effect = [
+            {"error": "timeout"},
+            {"statusCode": 200, "bodyLength": 512},
+        ]
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens=[
+                    {"role": "admin", "token": "admin_token", "type": "cookie"},
+                    {"role": "user", "token": "user_token", "type": "cookie"},
+                ],
+            )
+
+        import json
+        parsed = json.loads(result)
+        matrix = parsed["access_matrix"]
+        assert matrix[0]["role"] == "admin"
+        assert matrix[0]["error"] is not None
+        assert matrix[1]["role"] == "user"
+        assert matrix[1]["status_code"] == 200
+        assert matrix[1]["access_granted"] is True
