@@ -31,7 +31,7 @@ class TestBuildInputs:
     def test_env_overrides_apply(self):
         env_vars = {
             "ENGAGEMENT_ID": "ENG-TEST-001",
-            "TARGET_URL": "https://test靶.example.com",
+            "TARGET_URL": "https://test.example.com",
             "CLIENT_NAME": "TestCorp",
             "TEST_TYPE": "blackbox",
             "TESTER_NAME": "Alice",
@@ -41,7 +41,7 @@ class TestBuildInputs:
             inputs = _build_inputs()
 
             assert inputs["engagement_id"] == "ENG-TEST-001"
-            assert inputs["target_url"] == "https://test靶.example.com"
+            assert inputs["target_url"] == "https://test.example.com"
             assert inputs["client_name"] == "TestCorp"
             assert inputs["test_type"] == "blackbox"
             assert inputs["tester_name"] == "Alice"

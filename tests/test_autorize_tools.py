@@ -3,6 +3,7 @@ test_autorize_tools.py
 ──────────────────────
 Unit tests for autorize_tools.py session-swap logic and bypass detection.
 """
+import json
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -66,6 +67,21 @@ class TestSwapSessionToken:
         result = _swap_session_token(raw, "bearer", "attacker_bearer", None)
         assert "Authorization: Bearer attacker_bearer" in result
         assert "victim_token_here" not in result
+
+    def test_bearer_token_with_leading_space(self):
+        """Bearer token with space (standard JWT format) must be fully replaced."""
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer eyJhbGciOiJIUzI1NiJ9.eyJ1c2VyX2lkIjo0Mn0.sig\r\n"
+            "\r\n"
+        )
+        result = _swap_session_token(raw, "bearer", "attacker_jwt_here", None)
+        assert "eyJhbGciOiJIUzI1NiJ9" not in result
+        assert ".eyJ1c2VyX2lkIjo0Mn0.sig" not in result
+        assert "attacker_jwt_here" in result
+        # Ensure no duplicate/malformed token
+        assert result.count("Bearer ") == 1
 
     def test_bearer_jwt_with_underscores(self):
         """JWT tokens contain underscores in all three segments — regex must handle them."""
@@ -246,7 +262,6 @@ class TestAuthorizeMultiRoleTool:
                 role_tokens=[{"role": "admin", "token": "Bearer admin_token", "type": "bearer"}],
             )
 
-        import json
         parsed = json.loads(result)
         assert parsed["access_matrix"][0]["error"] is not None
         assert parsed["access_matrix"][0]["access_granted"] is False
@@ -281,7 +296,6 @@ class TestAuthorizeMultiRoleTool:
                 ],
             )
 
-        import json
         parsed = json.loads(result)
         matrix = parsed["access_matrix"]
         assert matrix[0]["role"] == "admin"
