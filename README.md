@@ -160,6 +160,8 @@ cp .env.example .env
 
 ```env
 # LLM API Keys
+# Set at least one key. One key runs single-agent mode.
+# Two or three keys run multi-agent mode with fallback for missing role-preferred providers.
 GOOGLE_API_KEY=your_gemini_key_here
 OPENAI_API_KEY=your_openai_key_here
 ANTHROPIC_API_KEY=your_anthropic_key_here
