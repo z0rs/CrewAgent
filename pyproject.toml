@@ -23,6 +23,7 @@ dev = [
 
 [project.scripts]
 pentest_crew = "pentest_crew.main:run"
+run_crew = "pentest_crew.main:run"
 
 [tool.setuptools.packages.find]
 where = ["src"]
