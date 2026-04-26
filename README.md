@@ -2,7 +2,9 @@
 
 Multi-agent web pentest pipeline built with CrewAI, Burp Suite MCP, and the Autorize extension.
 
-This project is designed for post-browsing analysis. You test the target manually first, let Burp capture HTTP history, then run this crew to triage requests, validate selected candidates, review evidence, and generate a report.
+This project runs directly on top of Burp MCP. The crew reads scope/history/scanner
+state from Burp and executes request validation through Burp tools without needing
+manual target input as a prerequisite.
 
 ## What It Does
 
@@ -50,7 +52,7 @@ This repository is aligned to the Burp MCP capabilities available in the connect
 
 **Important limitations:**
 
-- `send_to_intruder` should be treated as a handoff/setup action for manual Intruder review, not as a full automated fuzzing engine with result harvesting.
+- `send_to_intruder` is best treated as a setup/handoff action. Automated result harvesting from Intruder is still limited.
 - Findings are only as good as the Burp history and scope you prepared beforehand.
 - If Burp scope is empty or history is empty, the analyst reports that cleanly instead of inventing findings.
 - The Autorize wrapper tools perform session-swap testing via `send_http1_request`; they require you to capture and supply the relevant session tokens yourself.
@@ -170,9 +172,9 @@ ANTHROPIC_API_KEY=your_anthropic_key_here
 BURP_MCP_HOST=127.0.0.1
 BURP_MCP_PORT=9876
 
-# Engagement
+# Engagement (metadata)
 ENGAGEMENT_ID=ENG-2026-001
-TARGET_URL=https://target.example.com
+TARGET_URL=burp://active-scope
 CLIENT_NAME=Example Corp
 TEST_TYPE=greybox
 TESTER_NAME=Security Team
@@ -188,8 +190,8 @@ COLLABORATOR_WAIT_SECS=30
 # Via main.py (recommended — handles report path dynamically)
 python src/pentest_crew/main.py
 
-# With inline overrides
-ENGAGEMENT_ID=ENG-001 TARGET_URL=https://app.target.com python src/pentest_crew/main.py
+# With inline overrides (TARGET_URL optional metadata)
+ENGAGEMENT_ID=ENG-001 python src/pentest_crew/main.py
 
 # Via CrewAI CLI
 crewai run
@@ -222,7 +224,7 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 
 - `send_http1_request` / `send_http2_request` — replay with mutations
 - `create_repeater_tab` — organize tests by finding ID
-- `send_to_intruder` — handoff to Intruder for manual follow-up (payloads forwarded)
+- `send_to_intruder` — handoff/setup to Intruder (payloads forwarded)
 - `get_active_editor_contents` / `set_active_editor_contents` — editor manipulation
 - `generate_collaborator_payload` / `get_collaborator_interactions` / `poll_collaborator_with_wait` — OOB testing
 - `generate_random_string` / `base64_encode` / `base64_decode` / `url_encode` / `url_decode` — encoding
@@ -245,12 +247,12 @@ No Burp tools — consumes structured JSON from previous agents only.
 ## Recommended Workflow
 
 1. Configure Burp scope for the engagement.
-2. Browse the target manually through Burp — populate HTTP history deeply.
+2. Ensure Burp MCP connection is active and proxy history is accessible.
 3. Optionally run Burp Scanner on approved scope.
 4. If you want access control testing, prepare Autorize with at least two sessions (victim + attacker account).
 5. Ensure Burp intercept is disabled before running the crew.
-6. Run the crew.
-7. Review the generated report — validate all findings manually before delivery.
+6. Run the crew (the agents will enumerate scope and test endpoints through MCP tools).
+7. Review the generated report and confirm remediation priorities before delivery.
 
 ## Testing
 
@@ -278,7 +280,7 @@ The configuration is intentionally conservative:
 - explicit handling for empty Burp scope or empty history
 - findings require observable evidence — no theoretical flagging
 - Intruder is treated as review/handoff, not automated fuzzing
-- unsupported cases route to `MANUAL_REVIEW` or `NEEDS_ESCALATION`
+- unsupported cases route to `NEEDS_ESCALATION`
 - Autorize bypass detection uses relative body delta (< 2%) + structural content matching to minimize false negatives
 
 ## References

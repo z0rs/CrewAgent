@@ -19,16 +19,17 @@ Use this guideline when:
 
 ## Core Operating Model
 
-This project does not replace manual testing. It depends on manual browsing and deliberate request capture in Burp.
+This project can run directly with Burp MCP access (scope + history + request
+execution). Manual browsing is optional for deeper coverage, not a hard
+prerequisite.
 
 Recommended flow:
 
 1. Confirm authorization, scope, and target rules.
 2. Configure Burp scope and logging.
-3. Browse the application deeply with multiple user roles where allowed.
-4. Capture interesting HTTP requests, responses, and workflows.
-5. Run targeted manual tests in Burp.
-6. Run this crew to triage, validate, review, and document findings.
+3. Ensure Burp scope is correct and proxy history is accessible via MCP.
+4. Run this crew to triage, validate, review, and document findings.
+5. Optionally add manual browsing or targeted manual tests to enrich coverage.
 
 ## Testing Principles
 
@@ -45,9 +46,10 @@ Recommended flow:
 **Minimum preparation:**
 
 - define target scope
-- browse key application flows
-- authenticate as at least one normal user
-- capture login, logout, profile, object access, and state-changing requests
+- ensure Burp MCP is connected and readable
+- ensure in-scope hosts are configured
+- ensure proxy history/scanner data are available (or allow the crew to do
+  in-scope smoke testing)
 
 **Recommended additional preparation:**
 
@@ -72,7 +74,8 @@ The WSTG web application testing areas most relevant to this project are:
 - Business Logic Testing
 - Client-side Testing
 
-Use the crew after you already have enough traffic to support these areas.
+Use the crew directly against Burp MCP data. Additional traffic coverage will
+improve depth, but it is not mandatory to start.
 
 ## High-Value Bug Bounty Categories
 
@@ -241,7 +244,8 @@ This is one of the highest-value areas for this project.
 - duplicate action replay
 - race-friendly flows
 
-These often do not match simple regex patterns, so manual browsing quality matters.
+These often do not match simple regex patterns, so richer traffic coverage
+improves analysis quality.
 
 ## Priority Heuristics
 
@@ -295,7 +299,8 @@ When writing findings:
 
 ## How This Repo Fits the Workflow
 
-Use this repository after you have already done enough manual browsing to create meaningful Burp history.
+Use this repository directly against active Burp scope/history. Existing rich
+history helps, but the workflow does not require manual pre-browsing.
 
 **Strong fit:**
 - triaging large Burp histories
@@ -312,13 +317,11 @@ Use this repository after you have already done enough manual browsing to create
 
 1. Read program scope and policy.
 2. Set Burp scope.
-3. Create at least two accounts if allowed.
-4. Browse all important workflows.
-5. Mark requests that look identity-bound, role-bound, or callback-capable.
-6. Supply session tokens for the autorize session-swap checks.
-7. Run this project.
-8. Review candidate findings manually.
-9. Keep only evidence-backed issues.
+3. Ensure Burp MCP connection is healthy.
+4. Create at least two accounts if allowed (for authorization checks).
+5. Run this project.
+6. Review candidate findings and keep only evidence-backed issues.
+7. Optionally add manual follow-up for complex business-logic edge cases.
 
 ## Reference Categories from AllAboutBugBounty
 

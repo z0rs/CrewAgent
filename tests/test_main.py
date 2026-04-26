@@ -40,7 +40,7 @@ class TestBuildInputs:
 
             assert "engagement_id" in inputs
             assert inputs["engagement_id"].startswith("ENG-")
-            assert inputs["target_url"] == "https://target.example.com"
+            assert inputs["target_url"] == "burp://active-scope"
             assert inputs["client_name"] == "Client"
             assert inputs["test_type"] == "greybox"
             assert inputs["tester_name"] == "Security Team"
