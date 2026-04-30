@@ -506,6 +506,24 @@ class TestAuthorizeCheckToolVerdicts:
         assert result["autorize_result"] == "ERROR"
         assert "did not include a valid HTTP status code" in result["verdict"]
 
+    def test_bypassed_when_attacker_gets_201_victim_gets_200_same_size(self):
+        """201 from attacker with same body size as victim's 200 = soft bypass."""
+        result = self._run_tool(
+            baseline_resp={"statusCode": 200, "body": '{"id":1}', "bodyLength": 9},
+            swapped_resp={"statusCode": 201, "body": '{"id":2}', "bodyLength": 9},
+        )
+        assert result["autorize_result"] == "BYPASSED"
+        assert "CONFIRMED" in result["verdict"]
+
+    def test_hard_bypass_with_201_vs_403(self):
+        """Attacker gets 201 with non-empty body while victim is denied = hard bypass."""
+        result = self._run_tool(
+            baseline_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+            swapped_resp={"statusCode": 201, "body": '{"ok":true}', "bodyLength": 11},
+        )
+        assert result["autorize_result"] == "BYPASSED"
+        assert "victim baseline was HTTP 403" in result["verdict"]
+
     def test_invalid_token_type_returns_error_verdict(self):
         # Direct tool path with invalid token_type should fail gracefully.
         tool = AuthorizeCheckTool()

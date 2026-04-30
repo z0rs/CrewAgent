@@ -6,6 +6,7 @@ Unit tests for bug fixes and feature improvements.
 import pytest
 from pentest_crew.tools.autorize_tools import _swap_session_token, _remove_auth
 from pentest_crew.tools.burp_request_tools import _split_raw_request, SendHTTP2RequestTool
+from pentest_crew.tools.burp_collaborator_tools import PollCollaboratorInteractionsTool, CollaboratorPollWithWaitTool
 from unittest.mock import MagicMock, patch
 
 class TestAutorizeImprovements:
@@ -66,3 +67,38 @@ class TestRequestToolsImprovements:
         assert "x-custom-header" in sent_headers
         assert "User-Agent" not in sent_headers
         assert "X-Custom-Header" not in sent_headers
+
+
+class TestCollaboratorImprovements:
+    def test_poll_collaborator_uses_retry_for_transient_transport_errors(self):
+        tool = PollCollaboratorInteractionsTool()
+        mock_client = MagicMock()
+        mock_client.call_with_retry.return_value = {"count": 0, "interactions": [], "message": "No interactions detected"}
+
+        with patch("pentest_crew.tools.burp_collaborator_tools.get_client", return_value=mock_client):
+            result = tool._run(payload_id="payload-id")
+
+        assert "\"count\": 0" in result
+        mock_client.call_with_retry.assert_called_once_with(
+            "get_collaborator_interactions",
+            {"payloadId": "payload-id"},
+            retries=3,
+            delay=1.0,
+        )
+
+    def test_poll_collaborator_with_wait_uses_retry_for_transient_transport_errors(self):
+        tool = CollaboratorPollWithWaitTool()
+        mock_client = MagicMock()
+        mock_client.call_with_retry.return_value = {"count": 0, "interactions": [], "message": "No interactions detected"}
+
+        with patch("pentest_crew.tools.burp_collaborator_tools.time.sleep", return_value=None), \
+             patch("pentest_crew.tools.burp_collaborator_tools.get_client", return_value=mock_client):
+            result = tool._run(payload_id="payload-id", wait_seconds=0)
+
+        assert "\"count\": 0" in result
+        mock_client.call_with_retry.assert_called_once_with(
+            "get_collaborator_interactions",
+            {"payloadId": "payload-id"},
+            retries=3,
+            delay=1.0,
+        )
