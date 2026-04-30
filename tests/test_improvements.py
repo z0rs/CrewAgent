@@ -47,7 +47,7 @@ class TestRequestToolsImprovements:
     def test_http2_tool_lowercases_headers(self):
         tool = SendHTTP2RequestTool()
         mock_client = MagicMock()
-        mock_client.call.return_value = {"ok": True}
+        mock_client.call_with_retry.return_value = {"ok": True}
         
         raw_request = (
             "GET / HTTP/1.1\r\n"
@@ -59,7 +59,7 @@ class TestRequestToolsImprovements:
         with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
             tool._run(host="example.com", port=443, use_https=True, raw_request=raw_request)
             
-        call_args = mock_client.call.call_args[0]
+        call_args = mock_client.call_with_retry.call_args[0]
         sent_args = call_args[1]
         sent_headers = sent_args["headers"]
         

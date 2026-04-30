@@ -115,7 +115,7 @@ class TestSendToIntruderToolPayloads:
         """Explicit tab_name should be used as-is and payloads omitted for MCP compatibility."""
         tool = SendToIntruderTool()
         mock_client = MagicMock()
-        mock_client.call.return_value = {"ok": True}
+        mock_client.call_with_retry.return_value = {"ok": True}
 
         with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
             output = tool._run(
@@ -130,7 +130,7 @@ class TestSendToIntruderToolPayloads:
 
         parsed = json.loads(output)
         assert parsed["ok"] is True
-        called_tool, call_payload = mock_client.call.call_args.args
+        called_tool, call_payload = mock_client.call_with_retry.call_args.args
         assert called_tool == "send_to_intruder"
         assert call_payload["tabName"] == "FIND-001-FUZZ"
         assert call_payload["targetHostname"] == "target.com"
@@ -139,7 +139,7 @@ class TestSendToIntruderToolPayloads:
     def test_tabname_used_exactly_as_provided(self):
         tool = SendToIntruderTool()
         mock_client = MagicMock()
-        mock_client.call.return_value = {"ok": True}
+        mock_client.call_with_retry.return_value = {"ok": True}
 
         with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
             tool._run(
@@ -151,7 +151,7 @@ class TestSendToIntruderToolPayloads:
                 payload_type="Sniper",
             )
 
-        called_tool, call_payload = mock_client.call.call_args.args
+        called_tool, call_payload = mock_client.call_with_retry.call_args.args
         assert called_tool == "send_to_intruder"
         assert call_payload["tabName"] == "FIND-002-IDOR"
         assert "payloads" not in call_payload
@@ -160,7 +160,7 @@ class TestSendToIntruderToolPayloads:
         """Backward compatibility: missing tab_name should auto-derive from payload_type."""
         tool = SendToIntruderTool()
         mock_client = MagicMock()
-        mock_client.call.return_value = {"ok": True}
+        mock_client.call_with_retry.return_value = {"ok": True}
 
         with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
             tool._run(
@@ -172,7 +172,7 @@ class TestSendToIntruderToolPayloads:
                 payloads=None,
             )
 
-        called_tool, call_payload = mock_client.call.call_args.args
+        called_tool, call_payload = mock_client.call_with_retry.call_args.args
         assert called_tool == "send_to_intruder"
         assert call_payload["tabName"] == "Pitchfork"
         assert "payloads" not in call_payload
@@ -181,7 +181,7 @@ class TestSendToIntruderToolPayloads:
         """When tab_name is omitted and payloads exist, include first two payload previews."""
         tool = SendToIntruderTool()
         mock_client = MagicMock()
-        mock_client.call.return_value = {"ok": True}
+        mock_client.call_with_retry.return_value = {"ok": True}
 
         with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
             tool._run(
@@ -193,6 +193,78 @@ class TestSendToIntruderToolPayloads:
                 payloads=["id=1", "id=2", "id=3"],
             )
 
-        called_tool, call_payload = mock_client.call.call_args.args
+        called_tool, call_payload = mock_client.call_with_retry.call_args.args
         assert called_tool == "send_to_intruder"
         assert call_payload["tabName"] == "Sniper-id=1-id=2"
+
+
+class TestBurpRequestToolRetries:
+    def test_send_http1_request_uses_retrying_client(self):
+        tool = SendHTTP1RequestTool()
+        mock_client = MagicMock()
+        mock_client.call_with_retry.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="example.com",
+                port=443,
+                use_https=True,
+                raw_request="GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+            )
+
+        assert json.loads(result)["ok"] is True
+        mock_client.call_with_retry.assert_called_once_with(
+            "send_http1_request",
+            {
+                "content": "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+                "targetHostname": "example.com",
+                "targetPort": 443,
+                "usesHttps": True,
+            },
+            retries=3,
+            delay=1.0,
+        )
+
+    def test_send_http2_request_uses_retrying_client(self):
+        tool = SendHTTP2RequestTool()
+        mock_client = MagicMock()
+        mock_client.call_with_retry.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="example.com",
+                port=443,
+                use_https=True,
+                raw_request="GET / HTTP/1.1\r\nHost: example.com\r\nX-Test: 1\r\n\r\n",
+            )
+
+        assert json.loads(result)["ok"] is True
+        mock_client.call_with_retry.assert_called_once()
+
+    def test_create_repeater_tab_uses_retrying_client(self):
+        tool = CreateRepeaterTabTool()
+        mock_client = MagicMock()
+        mock_client.call_with_retry.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                tab_name="FIND-001",
+                raw_request="GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+                host="example.com",
+                port=443,
+                use_https=True,
+            )
+
+        assert json.loads(result)["ok"] is True
+        mock_client.call_with_retry.assert_called_once_with(
+            "create_repeater_tab",
+            {
+                "tabName": "FIND-001",
+                "content": "GET / HTTP/1.1\r\nHost: example.com\r\n\r\n",
+                "targetHostname": "example.com",
+                "targetPort": 443,
+                "usesHttps": True,
+            },
+            retries=3,
+            delay=1.0,
+        )

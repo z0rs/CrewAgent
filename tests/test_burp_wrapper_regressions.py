@@ -8,8 +8,13 @@ from pentest_crew.tools.burp_collaborator_tools import URLEncodeTool
 from pentest_crew.tools.burp_config_tools import (
     SetProjectOptionsTool,
     SetUserOptionsTool,
+    SetTaskExecutionEngineTool,
     SetProjectOptionsInput,
     SetUserOptionsInput,
+)
+from pentest_crew.tools.burp_proxy_tools import (
+    GetProxyHttpHistoryTool,
+    SetProxyInterceptStateTool,
 )
 
 
@@ -60,32 +65,87 @@ def test_set_options_inputs_keep_json_alias_compatibility():
 def test_url_encode_does_not_send_unsupported_fullencode_key():
     tool = URLEncodeTool()
     mock_client = MagicMock()
-    mock_client.call.return_value = {"data": "burp+mcp"}
+    mock_client.call_with_retry.return_value = {"data": "burp+mcp"}
 
     with patch("pentest_crew.tools.burp_collaborator_tools.get_client", return_value=mock_client):
         result = tool._run(data="burp mcp", full_encode=False)
 
     parsed = json.loads(result)
     assert parsed["data"] == "burp+mcp"
-    mock_client.call.assert_called_once_with(
+    mock_client.call_with_retry.assert_called_once_with(
         "url_encode",
         {"content": "burp mcp"},
+        retries=3,
+        delay=1.0,
     )
 
 
 def test_url_encode_ignores_full_encode_flag_for_mcp_compatibility():
     tool = URLEncodeTool()
     mock_client = MagicMock()
-    mock_client.call.return_value = {"data": "a%2Fb"}
+    mock_client.call_with_retry.return_value = {"data": "a%2Fb"}
 
     with patch("pentest_crew.tools.burp_collaborator_tools.get_client", return_value=mock_client):
         result = tool._run(data="a/b", full_encode=True)
 
     parsed = json.loads(result)
     assert parsed["data"] == "a%2Fb"
-    mock_client.call.assert_called_once_with(
+    mock_client.call_with_retry.assert_called_once_with(
         "url_encode",
         {"content": "a/b"},
+        retries=3,
+        delay=1.0,
+    )
+
+
+def test_get_proxy_http_history_uses_retrying_client():
+    tool = GetProxyHttpHistoryTool()
+    mock_client = MagicMock()
+    mock_client.call_with_retry.return_value = {"items": []}
+
+    with patch("pentest_crew.tools.burp_proxy_tools.get_client", return_value=mock_client):
+        result = tool._run(count=10, offset=2)
+
+    assert json.loads(result)["items"] == []
+    mock_client.call_with_retry.assert_called_once_with(
+        "get_proxy_http_history",
+        {"count": 10, "offset": 2},
+        retries=3,
+        delay=1.0,
+    )
+
+
+def test_set_proxy_intercept_state_uses_retrying_client():
+    tool = SetProxyInterceptStateTool()
+    mock_client = MagicMock()
+    mock_client.call_with_retry.return_value = {"ok": True}
+
+    with patch("pentest_crew.tools.burp_proxy_tools.get_client", return_value=mock_client):
+        result = tool._run(enabled=False)
+
+    assert json.loads(result)["ok"] is True
+    mock_client.call_with_retry.assert_called_once_with(
+        "set_proxy_intercept_state",
+        {"intercepting": False},
+        retries=3,
+        delay=1.0,
+    )
+
+
+def test_set_task_execution_engine_state_uses_retrying_client():
+    tool = SetTaskExecutionEngineTool()
+    mock_client = MagicMock()
+    mock_client.call_with_retry.return_value = {"ok": True}
+
+    with patch("pentest_crew.tools.burp_config_tools.get_client", return_value=mock_client):
+        result = tool._run(running=True)
+
+    assert json.loads(result)["ok"] is True
+    mock_client.call_with_retry.assert_called_once_with(
+        "set_task_execution_engine_state",
+        {"running": True},
+        retries=3,
+        delay=1.0,
     )
 
 

@@ -515,6 +515,24 @@ class TestAuthorizeCheckToolVerdicts:
         assert result["autorize_result"] == "BYPASSED"
         assert "CONFIRMED" in result["verdict"]
 
+    def test_bypassed_when_attacker_gets_204_victim_gets_403(self):
+        """204 No Content from attacker still counts as a successful bypass."""
+        result = self._run_tool(
+            baseline_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+            swapped_resp={"statusCode": 204, "body": "", "bodyLength": 0},
+        )
+        assert result["autorize_result"] == "BYPASSED"
+        assert "victim baseline was HTTP 403" in result["verdict"]
+
+    def test_unauthenticated_access_treats_any_2xx_as_success(self):
+        result = self._run_tool(
+            baseline_resp={"statusCode": 200, "body": '{"admin":true}', "bodyLength": 13},
+            swapped_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+            unauth_resp={"statusCode": 204, "body": "", "bodyLength": 0},
+        )
+        assert result["autorize_result"] == "UNAUTHENTICATED_ACCESS"
+        assert "CONFIRMED" in result["verdict"]
+
     def test_hard_bypass_with_201_vs_403(self):
         """Attacker gets 201 with non-empty body while victim is denied = hard bypass."""
         result = self._run_tool(
