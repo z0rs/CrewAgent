@@ -112,7 +112,7 @@ class TestSendToIntruderToolPayloads:
     """Tests for SendToIntruderTool payload handling."""
 
     def test_payloads_not_sent_to_mcp_tabname_from_explicit_arg(self):
-        """tab_name is now required — MCP server rejects calls without it."""
+        """Explicit tab_name should be used as-is and payloads omitted for MCP compatibility."""
         tool = SendToIntruderTool()
         mock_client = MagicMock()
         mock_client.call.return_value = {"ok": True}
@@ -156,12 +156,43 @@ class TestSendToIntruderToolPayloads:
         assert call_payload["tabName"] == "FIND-002-IDOR"
         assert "payloads" not in call_payload
 
-    def test_tabname_derivation_removed_tab_name_is_now_explicit(self):
-        """tab_name is now a required explicit parameter — no auto-derivation from payloads."""
-        # The old behavior of auto-deriving tabName from payload_type+payloads
-        # is replaced by explicit tab_name argument. Agents must provide the tab name.
-        payloads = ["id=1", "id=2", "id=3"]
-        # Old tab_name derivation: payload_type + first-two payloads
-        old_tab_name = "Sniper" if not payloads else f"Sniper-{'-'.join(payloads[:2])}"
-        assert old_tab_name == "Sniper-id=1-id=2"  # confirms old logic was correct
-        # New behavior: tab_name is always explicit, no auto-derivation
+    def test_tabname_derives_from_payload_type_when_not_provided(self):
+        """Backward compatibility: missing tab_name should auto-derive from payload_type."""
+        tool = SendToIntruderTool()
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            tool._run(
+                host="target.com",
+                port=443,
+                use_https=True,
+                raw_request="GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
+                payload_type="Pitchfork",
+                payloads=None,
+            )
+
+        called_tool, call_payload = mock_client.call.call_args.args
+        assert called_tool == "send_to_intruder"
+        assert call_payload["tabName"] == "Pitchfork"
+        assert "payloads" not in call_payload
+
+    def test_tabname_derives_from_payload_preview_when_payloads_present(self):
+        """When tab_name is omitted and payloads exist, include first two payload previews."""
+        tool = SendToIntruderTool()
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            tool._run(
+                host="target.com",
+                port=443,
+                use_https=True,
+                raw_request="GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
+                payload_type="Sniper",
+                payloads=["id=1", "id=2", "id=3"],
+            )
+
+        called_tool, call_payload = mock_client.call.call_args.args
+        assert called_tool == "send_to_intruder"
+        assert call_payload["tabName"] == "Sniper-id=1-id=2"

@@ -154,6 +154,19 @@ def test_call_with_retry_retries_on_taskgroup_transport_error():
     assert mock_client.call.call_count == 2
 
 
+def test_call_with_retry_zero_retries_still_runs_once():
+    """retries=0 should still execute one call and return safely."""
+    mock_client = MagicMock()
+    mock_client.call.return_value = {"error": "timeout"}
+
+    with patch("pentest_crew.tools.burp_mcp_client.call", mock_client.call):
+        from pentest_crew.tools.burp_mcp_client import call_with_retry
+        result = call_with_retry("some_tool", {}, retries=0)
+
+    assert "error" in result
+    assert mock_client.call.call_count == 1
+
+
 # ── text normalization tests ───────────────────────────────────────────────────
 
 def test_normalize_text_marks_config_editing_disabled_as_error():

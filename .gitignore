@@ -17,6 +17,7 @@ reports/
 
 # CrewAI runtime storage
 .crewai/
+.bug-hunter/
 
 # IDE
 .idea/

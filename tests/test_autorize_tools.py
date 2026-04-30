@@ -120,15 +120,15 @@ class TestSwapSessionToken:
         assert "new_value" in result
         assert "old_value" not in result
 
-    def test_no_matching_header_leaves_request_unchanged(self):
+    def test_missing_header_raises_instead_of_silent_noop(self):
         raw = (
             "GET /api/profile HTTP/1.1\r\n"
             "Host: target.example.com\r\n"
             "Accept: application/json\r\n"
             "\r\n"
         )
-        result = _swap_session_token(raw, "bearer", "some_token", None)
-        assert result == raw
+        with pytest.raises(ValueError, match="no 'Authorization: Bearer' header"):
+            _swap_session_token(raw, "bearer", "some_token", None)
 
 
 class TestRemoveAuth:
@@ -191,6 +191,18 @@ class TestRemoveAuth:
         )
         result = _remove_auth(raw)
         assert result == raw
+
+    def test_removes_custom_auth_header_when_requested(self):
+        raw = (
+            "GET /api/data HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "X-API-Key: secret\r\n"
+            "Accept: application/json\r\n"
+            "\r\n"
+        )
+        result = _remove_auth(raw, extra_headers=["X-API-Key"])
+        assert "X-API-Key:" not in result
+        assert "Accept: application/json" in result
 
     def test_preserves_body_and_header_separator_for_post_requests(self):
         raw = (
@@ -311,8 +323,8 @@ class TestAuthorizeMultiRoleTool:
                 use_https=True,
                 raw_request=raw,
                 role_tokens=[
-                    {"role": "admin", "token": "admin_token", "type": "cookie"},
-                    {"role": "user", "token": "user_token", "type": "cookie"},
+                    {"role": "admin", "token": "admin_token", "type": "bearer"},
+                    {"role": "user", "token": "user_token", "type": "bearer"},
                 ],
             )
 
@@ -361,7 +373,7 @@ class TestAuthorizeMultiRoleTool:
                 port=443,
                 use_https=True,
                 raw_request=raw,
-                role_tokens=[{"role": "user", "token": "user_token", "type": "cookie"}],
+                role_tokens=[{"role": "user", "token": "user_token", "type": "bearer"}],
             )
 
         parsed = json.loads(result)
@@ -409,6 +421,16 @@ class TestSwapSessionTokenValidation:
         )
         with pytest.raises(ValueError, match="token_header_name"):
             _swap_session_token(raw, "header", "new_key", None)
+
+    def test_token_type_is_case_insensitive(self):
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer old_token\r\n"
+            "\r\n"
+        )
+        result = _swap_session_token(raw, "BeArEr", "new_token", None)
+        assert "Authorization: Bearer new_token" in result
 
 
 class TestAuthorizeCheckToolVerdicts:
@@ -483,3 +505,128 @@ class TestAuthorizeCheckToolVerdicts:
         )
         assert result["autorize_result"] == "ERROR"
         assert "did not include a valid HTTP status code" in result["verdict"]
+
+    def test_invalid_token_type_returns_error_verdict(self):
+        # Direct tool path with invalid token_type should fail gracefully.
+        tool = AuthorizeCheckTool()
+        raw = (
+            "GET /api/resource HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Cookie: session=victim_token\r\n"
+            "\r\n"
+        )
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"statusCode": 200, "body": '{"ok":true}', "bodyLength": 11}
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            output = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request_victim=raw,
+                attacker_session_token="attacker_token",
+                token_type="invalid_type",
+            )
+        parsed = json.loads(output)
+        assert parsed["autorize_result"] == "ERROR"
+        assert "Invalid token swap parameters" in parsed["verdict"]
+
+    def test_unauthenticated_check_removes_custom_header_auth(self):
+        tool = AuthorizeCheckTool()
+        raw = (
+            "GET /api/internal HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "X-API-Key: victim_key\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        mock_client.call.side_effect = [
+            {"statusCode": 200, "body": '{"ok":true}', "bodyLength": 11},   # baseline
+            {"statusCode": 403, "body": "Forbidden", "bodyLength": 9},      # swapped
+            {"statusCode": 403, "body": "Forbidden", "bodyLength": 9},      # unauth
+        ]
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request_victim=raw,
+                attacker_session_token="attacker_key",
+                token_type="header",
+                token_header_name="X-API-Key",
+                unauthenticated_test=True,
+            )
+
+        unauth_request = mock_client.call.call_args_list[2].args[1]["content"]
+        assert "X-API-Key:" not in unauth_request
+
+
+class TestAuthorizeMultiRoleToolInputResilience:
+    """Invalid per-role entries should not crash the whole multi-role run."""
+
+    def test_missing_token_in_one_role_does_not_abort_others(self):
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer token\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"statusCode": 200, "bodyLength": 32}
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens=[
+                    {"role": "broken-role", "type": "bearer"},  # missing token
+                    {"role": "valid-role", "token": "good_token", "type": "bearer"},
+                ],
+            )
+
+        parsed = json.loads(result)
+        matrix = parsed["access_matrix"]
+        assert len(matrix) == 2
+        assert matrix[0]["role"] == "broken-role"
+        assert matrix[0]["error"] is not None
+        assert matrix[1]["role"] == "valid-role"
+        assert matrix[1]["status_code"] == 200
+
+    def test_header_token_type_uses_header_name_per_role(self):
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "X-API-Key: old_key\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"statusCode": 200, "bodyLength": 16}
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens=[
+                    {
+                        "role": "service-role",
+                        "token": "new_key",
+                        "type": "header",
+                        "header_name": "X-API-Key",
+                    }
+                ],
+            )
+
+        parsed = json.loads(result)
+        assert parsed["access_matrix"][0]["status_code"] == 200
+        sent_request = mock_client.call.call_args.args[1]["content"]
+        assert "X-API-Key: new_key" in sent_request
