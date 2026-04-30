@@ -16,32 +16,36 @@ from pentest_crew.tools.burp_config_tools import (
 def test_set_project_options_no_json_module_shadowing():
     tool = SetProjectOptionsTool()
     mock_client = MagicMock()
-    mock_client.call.return_value = {"ok": True}
+    mock_client.call_with_retry.return_value = {"ok": True}
 
     with patch("pentest_crew.tools.burp_config_tools.get_client", return_value=mock_client):
         result = tool._run(options_json='{"project_options":{}}')
 
     parsed = json.loads(result)
     assert parsed["ok"] is True
-    mock_client.call.assert_called_once_with(
+    mock_client.call_with_retry.assert_called_once_with(
         "set_project_options",
         {"json": '{"project_options":{}}'},
+        retries=3,
+        delay=1.0,
     )
 
 
 def test_set_user_options_no_json_module_shadowing():
     tool = SetUserOptionsTool()
     mock_client = MagicMock()
-    mock_client.call.return_value = {"ok": True}
+    mock_client.call_with_retry.return_value = {"ok": True}
 
     with patch("pentest_crew.tools.burp_config_tools.get_client", return_value=mock_client):
         result = tool._run(options_json='{"user_options":{}}')
 
     parsed = json.loads(result)
     assert parsed["ok"] is True
-    mock_client.call.assert_called_once_with(
+    mock_client.call_with_retry.assert_called_once_with(
         "set_user_options",
         {"json": '{"user_options":{}}'},
+        retries=3,
+        delay=1.0,
     )
 
 
@@ -123,6 +127,22 @@ def test_call_with_retry_retries_on_connection_refused():
     mock_client = MagicMock()
     mock_client.call.side_effect = [
         {"error": "connection refused"},
+        {"ok": True},
+    ]
+
+    with patch("pentest_crew.tools.burp_mcp_client.call", mock_client.call):
+        from pentest_crew.tools.burp_mcp_client import call_with_retry
+        result = call_with_retry("some_tool", {})
+
+    assert result == {"ok": True}
+    assert mock_client.call.call_count == 2
+
+
+def test_call_with_retry_retries_on_taskgroup_transport_error():
+    """TaskGroup transport wrappers should be retried as transient errors."""
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [
+        {"error": "unhandled errors in a TaskGroup (1 sub-exception)"},
         {"ok": True},
     ]
 
