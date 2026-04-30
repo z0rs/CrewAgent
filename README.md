@@ -36,7 +36,7 @@ This repository is aligned to the Burp MCP capabilities available in the connect
   - `send_http1_request`
   - `send_http2_request`
   - `create_repeater_tab`
-  - `send_to_intruder` (payloads are forwarded to the MCP server)
+  - `send_to_intruder` (payload previews are kept in tab name; MCP schema currently ignores explicit payload lists)
   - `get_active_editor_contents`
   - `set_active_editor_contents`
 - **Collaborator and helpers:**
@@ -224,7 +224,7 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 
 - `send_http1_request` / `send_http2_request` — replay with mutations
 - `create_repeater_tab` — organize tests by finding ID
-- `send_to_intruder` — handoff/setup to Intruder (payloads forwarded)
+- `send_to_intruder` — handoff/setup to Intruder (payload previews are encoded in tab name)
 - `get_active_editor_contents` / `set_active_editor_contents` — editor manipulation
 - `generate_collaborator_payload` / `get_collaborator_interactions` / `poll_collaborator_with_wait` — OOB testing
 - `generate_random_string` / `base64_encode` / `base64_decode` / `url_encode` / `url_decode` — encoding

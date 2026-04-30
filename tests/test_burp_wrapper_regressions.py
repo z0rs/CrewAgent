@@ -83,3 +83,88 @@ def test_url_encode_ignores_full_encode_flag_for_mcp_compatibility():
         "url_encode",
         {"content": "a/b"},
     )
+
+
+# ── call_with_retry tests ──────────────────────────────────────────────────────
+
+def test_call_with_retry_retries_on_transient_timeout():
+    """Timeout errors must be retried with exponential backoff."""
+    mock_client = MagicMock()
+    # First two calls fail with timeout, third succeeds
+    mock_client.call.side_effect = [
+        {"error": "timeout"},
+        {"error": "Connection timed out"},
+        {"ok": True},
+    ]
+
+    with patch("pentest_crew.tools.burp_mcp_client.call", mock_client.call):
+        from pentest_crew.tools.burp_mcp_client import call_with_retry
+        result = call_with_retry("some_tool", {}, retries=3)
+
+    assert result == {"ok": True}
+    assert mock_client.call.call_count == 3
+
+
+def test_call_with_retry_gives_up_on_permanent_error():
+    """Permanent errors (bad tool name) must NOT be retried."""
+    mock_client = MagicMock()
+    mock_client.call.return_value = {"error": "Unknown tool 'bad_tool_name'"}
+
+    with patch("pentest_crew.tools.burp_mcp_client.call", mock_client.call):
+        from pentest_crew.tools.burp_mcp_client import call_with_retry
+        result = call_with_retry("bad_tool_name", {}, retries=3)
+
+    assert "error" in result
+    assert mock_client.call.call_count == 1  # no retries
+
+
+def test_call_with_retry_retries_on_connection_refused():
+    """Connection refused is retryable."""
+    mock_client = MagicMock()
+    mock_client.call.side_effect = [
+        {"error": "connection refused"},
+        {"ok": True},
+    ]
+
+    with patch("pentest_crew.tools.burp_mcp_client.call", mock_client.call):
+        from pentest_crew.tools.burp_mcp_client import call_with_retry
+        result = call_with_retry("some_tool", {})
+
+    assert result == {"ok": True}
+    assert mock_client.call.call_count == 2
+
+
+# ── text normalization tests ───────────────────────────────────────────────────
+
+def test_normalize_text_marks_config_editing_disabled_as_error():
+    from pentest_crew.tools.burp_mcp_client import _normalize_tool_text_response
+
+    result = _normalize_tool_text_response(
+        "User has disabled configuration editing. They can enable it in Burp."
+    )
+    assert result is not None
+    assert "error" in result
+
+
+def test_normalize_text_parses_collaborator_payload_block():
+    from pentest_crew.tools.burp_mcp_client import _normalize_tool_text_response
+
+    msg = (
+        "Payload: abc123.oastify.com\n"
+        "Payload ID: abc123\n"
+        "Collaborator server: oastify.com"
+    )
+    result = _normalize_tool_text_response(msg)
+    assert result == {
+        "payload": "abc123.oastify.com",
+        "payloadId": "abc123",
+        "collaboratorServer": "oastify.com",
+    }
+
+
+def test_normalize_text_null_http_response_becomes_error():
+    from pentest_crew.tools.burp_mcp_client import _normalize_tool_text_response
+
+    result = _normalize_tool_text_response("HttpRequestResponse{httpRequest=..., httpResponse=null}")
+    assert result is not None
+    assert result["error"].startswith("No HTTP response returned")

@@ -3,6 +3,9 @@ test_burp_request_tools.py
 ──────────────────────────
 Unit tests for burp_request_tools.py — HTTP request parsing and tool classes.
 """
+import json
+from unittest.mock import MagicMock, patch
+
 import pytest
 
 from pentest_crew.tools.burp_request_tools import (
@@ -108,34 +111,49 @@ class TestSendHTTP2RequestToolBuild:
 class TestSendToIntruderToolPayloads:
     """Tests for SendToIntruderTool payload handling."""
 
-    def test_payloads_list_passed_to_args(self):
-        """Verify that payloads are included in the args dict when provided."""
+    def test_payloads_not_sent_to_mcp_but_tabname_keeps_preview(self):
+        """Burp MCP currently rejects unknown payloads key; wrapper must omit it."""
         tool = SendToIntruderTool()
-        # We test the internal _run flow by checking args construction
-        payloads = ["test1", "test2", "test3"]
-        args = {
-            "content": "GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
-            "tabName": "Sniper",
-            "targetHostname": "target.com",
-            "targetPort": 443,
-            "usesHttps": True,
-        }
-        if payloads:
-            args["payloads"] = payloads
-        assert args.get("payloads") == payloads
-        assert args["tabName"] == "Sniper"
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            output = tool._run(
+                host="target.com",
+                port=443,
+                use_https=True,
+                raw_request="GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
+                payload_type="Sniper",
+                payloads=["id=1", "id=2", "id=3"],
+            )
+
+        parsed = json.loads(output)
+        assert parsed["ok"] is True
+        called_tool, call_payload = mock_client.call.call_args.args
+        assert called_tool == "send_to_intruder"
+        assert call_payload["targetHostname"] == "target.com"
+        assert call_payload["tabName"] == "Sniper-id=1-id=2"
+        assert "payloads" not in call_payload
 
     def test_without_payloads_tabname_uses_payload_type(self):
-        """When no payloads provided, tab name should reflect payload type."""
-        args = {
-            "content": "GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
-            "tabName": "Pitchfork",
-            "targetHostname": "target.com",
-            "targetPort": 443,
-            "usesHttps": True,
-        }
-        assert args["tabName"] == "Pitchfork"
-        assert "payloads" not in args
+        tool = SendToIntruderTool()
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"ok": True}
+
+        with patch("pentest_crew.tools.burp_request_tools.get_client", return_value=mock_client):
+            tool._run(
+                host="target.com",
+                port=443,
+                use_https=True,
+                raw_request="GET /search?q=§FUZZ§ HTTP/1.1\r\nHost: target.com\r\n\r\n",
+                payload_type="Pitchfork",
+                payloads=None,
+            )
+
+        called_tool, call_payload = mock_client.call.call_args.args
+        assert called_tool == "send_to_intruder"
+        assert call_payload["tabName"] == "Pitchfork"
+        assert "payloads" not in call_payload
 
     def test_tabname_with_payloads_includes_first_two_payloads(self):
         """When payloads are provided, tab name should include first two payload previews."""

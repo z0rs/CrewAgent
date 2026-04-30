@@ -11,6 +11,7 @@ import pytest
 from pentest_crew.tools.autorize_tools import (
     AuthorizeCheckTool,
     AuthorizeMultiRoleTool,
+    _get_status,
     _swap_session_token,
     _remove_auth,
 )
@@ -191,6 +192,25 @@ class TestRemoveAuth:
         result = _remove_auth(raw)
         assert result == raw
 
+    def test_preserves_body_and_header_separator_for_post_requests(self):
+        raw = (
+            "POST /api/update HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer secret_token\r\n"
+            "Content-Type: application/json\r\n"
+            "Content-Length: 18\r\n"
+            "\r\n"
+            '{"role":"user"}'
+        )
+        result = _remove_auth(raw)
+        assert "Authorization:" not in result
+        assert "Content-Type: application/json" in result
+        assert "\r\n\r\n" in result
+        head, sep, body = result.partition("\r\n\r\n")
+        assert sep == "\r\n\r\n"
+        assert body == '{"role":"user"}'
+        assert '{"role":"user"}' not in head
+
 
 class TestNormalizedBodyMatch:
     """Tests for AuthorizeCheckTool._normalized_body_match static method."""
@@ -303,3 +323,163 @@ class TestAuthorizeMultiRoleTool:
         assert matrix[1]["role"] == "user"
         assert matrix[1]["status_code"] == 200
         assert matrix[1]["access_granted"] is True
+
+    def test_non_list_role_tokens_raises_type_error(self):
+        """Passing a dict instead of a list must raise TypeError, not silently fail."""
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer admin_token\r\n"
+            "\r\n"
+        )
+        with pytest.raises(TypeError, match="must be a list"):
+            tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens={"role": "admin", "token": "tok"},
+            )
+
+    def test_null_http_response_is_recorded_as_error(self):
+        """A null MCP response must not be treated as granted access."""
+        tool = AuthorizeMultiRoleTool()
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Authorization: Bearer token\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        mock_client.call.return_value = {"data": "HttpRequestResponse{httpResponse=null}"}
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request=raw,
+                role_tokens=[{"role": "user", "token": "user_token", "type": "cookie"}],
+            )
+
+        parsed = json.loads(result)
+        entry = parsed["access_matrix"][0]
+        assert entry["status_code"] is None
+        assert entry["access_granted"] is False
+        assert entry["error"] == "No valid HTTP status code returned"
+
+
+class TestGetStatus:
+    """Tests for _get_status helper."""
+
+    def test_extracts_statusCode(self):
+        assert _get_status({"statusCode": 200}) == 200
+
+    def test_extracts_status(self):
+        assert _get_status({"status": 403}) == 403
+
+    def test_prefers_statusCode_over_status(self):
+        assert _get_status({"statusCode": 201, "status": 200}) == 201
+
+    def test_returns_none_when_missing(self):
+        assert _get_status({}) is None
+
+    def test_returns_none_for_non_numeric(self):
+        assert _get_status({"statusCode": "OK"}) is None
+
+    def test_extracts_status_from_plain_text_http_request_response(self):
+        raw = (
+            "HttpRequestResponse{httpRequest=GET / HTTP/1.1, "
+            "httpResponse=HTTP/1.1 201 Created\\r\\nContent-Type: application/json\\r\\n\\r\\n{}}"
+        )
+        assert _get_status({"data": raw}) == 201
+
+
+class TestSwapSessionTokenValidation:
+    """Tests for _swap_session_token input validation."""
+
+    def test_header_type_without_header_name_raises(self):
+        raw = (
+            "GET /api/admin HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "X-API-Key: old_key\r\n"
+            "\r\n"
+        )
+        with pytest.raises(ValueError, match="token_header_name"):
+            _swap_session_token(raw, "header", "new_key", None)
+
+
+class TestAuthorizeCheckToolVerdicts:
+    """Tests for AuthorizeCheckTool._run verdict branches."""
+
+    def _run_tool(self, baseline_resp, swapped_resp, unauth_resp=None):
+        tool = AuthorizeCheckTool()
+        raw = (
+            "GET /api/resource HTTP/1.1\r\n"
+            "Host: target.example.com\r\n"
+            "Cookie: session=victim_token\r\n"
+            "\r\n"
+        )
+
+        mock_client = MagicMock()
+        responses = [baseline_resp, swapped_resp]
+        if unauth_resp is not None:
+            responses.append(unauth_resp)
+        mock_client.call.side_effect = responses
+
+        with patch("pentest_crew.tools.autorize_tools.get_client", return_value=mock_client):
+            result = tool._run(
+                host="target.example.com",
+                port=443,
+                use_https=True,
+                raw_request_victim=raw,
+                attacker_session_token="attacker_token",
+                token_type="cookie",
+                unauthenticated_test=(unauth_resp is not None),
+            )
+        return json.loads(result)
+
+    def test_bypassed_when_attacker_gets_200_victim_gets_200_same_body(self):
+        body = '{"id": 1, "name": "Alice"}'
+        result = self._run_tool(
+            baseline_resp={"statusCode": 200, "body": body, "bodyLength": len(body)},
+            swapped_resp={"statusCode": 200, "body": body, "bodyLength": len(body)},
+        )
+        assert result["autorize_result"] == "BYPASSED"
+        assert "CONFIRMED" in result["verdict"]
+
+    def test_bypassed_when_attacker_gets_200_victim_gets_403(self):
+        """Critical case: victim denied but attacker succeeds = broken access control."""
+        body = '{"id": 1, "name": "Alice"}'
+        result = self._run_tool(
+            baseline_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+            swapped_resp={"statusCode": 200, "body": body, "bodyLength": len(body)},
+        )
+        assert result["autorize_result"] == "BYPASSED"
+        assert "victim baseline was HTTP 403" in result["verdict"]
+
+    def test_not_bypassed_when_attacker_gets_403(self):
+        result = self._run_tool(
+            baseline_resp={"statusCode": 200, "body": '{"id":1}', "bodyLength": 9},
+            swapped_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+        )
+        assert result["autorize_result"] == "NOT_BYPASSED"
+
+    def test_unauthenticated_access(self):
+        result = self._run_tool(
+            baseline_resp={"statusCode": 200, "body": '{"admin":true}', "bodyLength": 13},
+            swapped_resp={"statusCode": 403, "body": "Forbidden", "bodyLength": 9},
+            unauth_resp={"statusCode": 200, "body": '{"public":true}', "bodyLength": 14},
+        )
+        assert result["autorize_result"] == "UNAUTHENTICATED_ACCESS"
+        assert "CONFIRMED" in result["verdict"]
+
+    def test_error_when_baseline_status_missing(self):
+        result = self._run_tool(
+            baseline_resp={"data": "HttpRequestResponse{httpResponse=null}"},
+            swapped_resp={"statusCode": 200, "body": '{"id":1}', "bodyLength": 9},
+        )
+        assert result["autorize_result"] == "ERROR"
+        assert "did not include a valid HTTP status code" in result["verdict"]
