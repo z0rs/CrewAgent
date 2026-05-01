@@ -59,6 +59,10 @@ This repository covers all tools exposed by the Burp MCP server:
 
 **`url_encode` encoding**: Burp's `url_encode` uses `application/x-www-form-urlencoded` (space → `+`). Use `%20` manually if RFC 3986 encoding is required.
 
+**Credential redaction and binary suppression**: Burp history/editor/request outputs are normalized before they reach the agents. Authorization headers, cookies, API keys, and similar secrets are redacted by default, and binary bodies are replaced with short placeholders. The wrappers also extract method/path/parameter metadata and risk hints so the crew can still triage attack surface effectively.
+
+**Autonomous tool hardening**: `set_project_options`, `set_user_options`, `set_task_execution_engine_state`, and `output_user_options` remain available as wrappers, but they are not exposed to the autonomous agent tool groups by default. This avoids accidental scope or Burp configuration drift during unattended runs.
+
 **Empty scope/history**: If Burp scope or proxy history is empty, the analyst reports that cleanly instead of inventing findings.
 
 ## Architecture
@@ -241,7 +245,11 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 - `get_proxy_http_history` / `search_proxy_http_history` — re-check history during validation
 - `get_scanner_issues` — cross-reference scanner state
 - `get_project_options` — re-verify scope
-- `set_task_execution_engine_state` — pause Burp Scanner during manual testing
+- SSRF, GraphQL, XSS, JWT, request smuggling, redirect/CORS, and business-logic helpers — targeted bug-hunting probes
+
+Admin tools such as `set_project_options`, `set_user_options`, `output_user_options`, and
+`set_task_execution_engine_state` are intentionally kept out of autonomous agent tool
+groups. They remain importable for manual/operator-driven workflows.
 
 ### `lead_pentester`
 
@@ -250,7 +258,6 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 - `get_collaborator_interactions` — re-verify OOB callbacks
 - `get_active_editor_contents` — spot-check specific requests
 - `output_project_options` — verify scope compliance
-- `output_user_options` — check user settings
 - `base64_decode` / `url_decode` — decode evidence tokens
 
 ### `report_generator`
