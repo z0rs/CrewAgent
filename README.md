@@ -18,11 +18,11 @@ Uses one LLM to run all 4 stages sequentially in a single agent (`pentester`).
 |--------|--------|
 | **Active Agent** | `pentester` (1 agent) |
 | **Active Task** | `pentest_task` (1 unified task) |
-| **Tools** | ALL_TOOLS — all 107 tools available |
+| **Tools** | ALL_TOOLS — all 118 tools available |
 | **Scope** | HTTP triage → Validation → QA Review → Report Generation |
 | **Pipeline** | All 4 stages in 1 agent, 1 context window |
 
-**Pentester's tool access**: All 107 tools from every tool group. Pentester has full access to scope discovery, HTTP analysis, auth testing, fuzzing, validation, QA review, exploitation, and evidence capture.
+**Pentester's tool access**: All 118 tools from every tool group. Pentester has full access to scope discovery, HTTP analysis, auth testing, fuzzing, validation, QA review, exploitation, and evidence capture.
 
 ### Multi-Agent Mode (2+ API keys)
 
@@ -48,15 +48,15 @@ scope_discovery_agent → http_analyst → auth_agent → fuzzing_agent
 
 | # | Agent | Mode | Task | Tools | Role |
 |---|-------|------|------|-------|------|
-| 1 | `pentester` | Single | `pentest_task` | ALL (107) | All 4 stages in one agent |
+| 1 | `pentester` | Single | `pentest_task` | ALL (118) | All 4 stages in one agent |
 | 2 | `scope_discovery_agent` | Multi | `scope_discovery_task` | 11 | Target discovery without existing traffic |
 | 3 | `http_analyst` | Multi | `http_triage_task` | 17 | HTTP history triage, finding candidates |
 | 4 | `auth_agent` | Multi | `auth_task` | 8 | Auth endpoint discovery, session extraction |
 | 5 | `fuzzing_agent` | Multi | `fuzzing_task` | 9 | Parameter auto-fuzzing, anomaly detection |
-| 6 | `validation_executor` | Multi | `validation_task` | 94 | Vulnerability validation, Repeater/Collaborator/Autorize |
+| 6 | `validation_executor` | Multi | `validation_task` | 105 | Vulnerability validation, Repeater/Collaborator/Autorize |
 | 7 | `lead_pentester` | Multi | `qa_review_task` | 14 | QA review, CVSS scoring, coverage analysis |
-| 8 | `exploitation_agent` | Multi | `exploitation_task` | 15 | Post-confirmation data extraction |
-| 9 | `report_generator` | Multi | `report_generation_task` | 4 | Final client-ready report |
+| 8 | `exploitation_agent` | Multi | `exploitation_task` | 16 | Post-confirmation data extraction |
+| 9 | `report_generator` | Multi | `report_generation_task` | 5 | Final client-ready report |
 
 ---
 
@@ -68,10 +68,40 @@ scope_discovery_agent → http_analyst → auth_agent → fuzzing_agent
 | `http_analyst` | ANALYST_TOOLS | 17 | `get_proxy_http_history`, `search_proxy_http_history`, `get_scanner_issues`, `auth_endpoint_discovery`, `credential_extraction`, `session_token_extraction` |
 | `auth_agent` | AUTH_TOOLS | 8 | `auth_endpoint_discovery`, `credential_extraction`, `session_token_extraction`, `auto_login_test`, `send_http1_request` |
 | `fuzzing_agent` | FUZZING_TOOLS | 9 | `param_discovery`, `param_fuzzer`, `param_typer`, `fuzzing_combo`, `send_to_intruder` |
-| `validation_executor` | EXECUTOR_TOOLS | 94 | SSRF, GraphQL, XSS, JWT, SQLi, XXE, Command Injection, WebSocket, DOM XSS, Request Smuggling, Business Logic, Redirect/CORS, Stateful Testing, Fuzzing, Data Extraction |
+| `validation_executor` | EXECUTOR_TOOLS | 105 | SSRF, GraphQL, XSS, JWT, SQLi, XXE, Command Injection, WebSocket, DOM XSS, Request Smuggling, Business Logic, CRLF Injection, Prototype Pollution, Cache Poisoning, postMessage Security, LDAP Injection, S3 Bucket Enum, Redirect/CORS, Stateful Testing, Fuzzing, Data Extraction |
 | `lead_pentester` | REVIEWER_TOOLS | 14 | `coverage_gap_analyzer`, `session_fixation_test`, `multi_step_flow_test`, `oauth_flow_test`, `cookie_persistence_test`, `false_positive_tracker`, `differential_reporting` |
-| `exploitation_agent` | EXPLOITATION_TOOLS | 15 | `sql_data_extraction`, `idor_data_extraction`, `ssrf_data_extraction`, `jwt_data_extraction`, `generic_data_extract`, `autorize_check` |
-| `report_generator` | REPORTER_TOOLS | 4 | `poc_script_generator`, `request_response_dumper`, `evidence_bundler`, `differential_reporting` |
+| `exploitation_agent` | EXPLOITATION_TOOLS | 16 | `sql_data_extraction`, `idor_data_extraction`, `ssrf_data_extraction`, `jwt_data_extraction`, `generic_data_extract`, `autorize_check`, `exploit_chain_correlator` |
+| `report_generator` | REPORTER_TOOLS | 5 | `poc_script_generator`, `request_response_dumper`, `evidence_bundler`, `filter_report_input`, `differential_reporting` |
+
+---
+
+## Vulnerability Categories (TOOL_CATEGORIES)
+
+The validation executor uses `TOOL_CATEGORIES` for dynamic tool composition based on analyst finding types. Each category maps to one or more specialized tools.
+
+| Category | Tools |
+|----------|-------|
+| `sqli` | SQL injection error, blind, union, boolean blind, stacked queries, full test, data extraction |
+| `xss` | Context test, WAF bypass, comprehensive, DOM XSS variants |
+| `ssrf` | Basic, metadata enum, protocol test, blind, data extraction |
+| `xxe` | Test, blind, billion laughs, XInclude, full test |
+| `cmd_injection` | Test, blind, output extraction, encoded, full test |
+| `graphql` | Introspection, enum brute, alias abuse, batch bypass, IDOR, depth attack |
+| `jwt` | Analysis, none bypass, manipulate, alg confusion, data extraction |
+| `smuggling` | Request smuggling, CL.0, TE/TE, HTTP/2 |
+| `redirect` | Open redirect, host header injection, CORS misconfig, URL pollution |
+| `business_logic` | Race condition, parameter pollution, mass assignment, OTP bypass, coupon bypass |
+| `idor` | IDOR data extraction |
+| `websocket` | Handshake, injection, frame injection, CSWSH, fuzzer, full test |
+| `auth` | Session fixation, multi-step flow, OAuth flow, cookie persistence |
+| `fuzzing` | Param discovery, fuzzer, typer, combo |
+| `crlf` | HTTP response splitting test, header injection test |
+| `prototype_pollution` | Basic and deep prototype pollution |
+| `cache_poisoning` | Cache poisoning test, WebCache deception test |
+| `postmessage` | postMessage listener security test |
+| `ldap` | LDAP injection, blind LDAP injection |
+| `s3` | S3 bucket enumeration, S3 SSRF test |
+| `extraction` | Generic data extraction |
 
 ---
 
@@ -109,7 +139,7 @@ This repository covers all tools exposed by the Burp MCP server:
 | `autorize_check` | `AuthorizeCheckTool` | Session-swap bypass detection |
 | `autorize_multi_role_check` | `AuthorizeMultiRoleTool` | Multi-role vertical escalation check |
 
-**Autorize wrapper behavior** (`autorize_tools.py`): These tools do not require the Autorize plugin to be installed. They replicate Autorize's session-swap logic by calling `send_http1_request` directly — replaying victim requests with attacker tokens, comparing responses by status code and body equivalence.
+**Autorize wrapper behavior** (`autorize_tools.py`): These tools do not require the Autorize plugin to be installed. They replicate Autorize's session-swap logic by calling `send_http1_request` directly — replaying victim requests with attacker tokens, comparing responses by status code and structural body equivalence.
 
 **`send_to_intruder` tab naming**: `tab_name` is an explicit parameter. When omitted, the tool auto-derives a name from `payload_type` (e.g. `"Pitchfork"`) or `payload_type + first-two-payloads` (e.g. `"Sniper-id=1-id=2"`). Pass an explicit `tab_name` (e.g. `"FIND-001-IDOR"`) for traceability.
 
@@ -136,7 +166,7 @@ This repository covers all tools exposed by the Burp MCP server:
          - Validation
          - QA Review
          - Report Generation
-         - All 107 tools
+         - All 118 tools
 ```
 
 ### Multi-Agent Mode (2+ API keys)
@@ -162,10 +192,12 @@ This repository covers all tools exposed by the Burp MCP server:
         Parameter auto-fuzzing, anomaly detection
                |
                v
-      [validation_executor] ← specialist, 94 tools
+      [validation_executor] ← specialist, 105 tools
          HTTP replay, Collaborator, Autorize, SSRF, XSS,
          SQLi, XXE, JWT, Command Injection, WebSocket,
-         Request Smuggling, Business Logic, Stateful Testing
+         Request Smuggling, Business Logic, CRLF Injection,
+         Prototype Pollution, Cache Poisoning, postMessage Security,
+         LDAP Injection, S3 Bucket Enum, Stateful Testing
                |
                v
        [lead_pentester]
@@ -173,12 +205,25 @@ This repository covers all tools exposed by the Burp MCP server:
                |
                v
       [exploitation_agent] ← post-confirmation only
-         SQL/IDOR/SSRF/JWT data extraction
+         SQL/IDOR/SSRF/JWT data extraction, exploit chain correlation
                |
                v
       [report_generator]
       Final Markdown report + PoC scripts + evidence bundle
 ```
+
+### Pipeline Gates
+
+`pipeline_gates.py` provides optional pre-flight gates that skip agent stages when their preconditions are not met:
+
+| Gate | Condition |
+|------|-----------|
+| `scope_non_empty` | Burp scope contains at least one URL |
+| `auth_endpoints_exist` | Auth-related tokens/cookies present in history |
+| `parameters_exist` | At least one parameter discovered in history |
+| `confirmed_findings_exist` | Prior run has at least one confirmed finding |
+
+Gates run before their respective agent in multi-agent mode. When a gate fails, the pipeline skips to the next stage rather than running the agent speculatively.
 
 ---
 
@@ -201,6 +246,7 @@ pentest_crew/
 │       ├── main.py          # Entry point, env validation, input building
 │       ├── crew.py          # Crew/agent/task definitions, LLM selection
 │       ├── llm_mode.py      # Single vs multi-agent detection, model overrides
+│       ├── pipeline_gates.py # Pre-flight gates for pipeline stage skipping
 │       ├── config/
 │       │   ├── agents.yaml  # Agent backstories + tool routing instructions
 │       │   └── tasks.yaml   # Task definitions for all pipeline stages
@@ -231,14 +277,25 @@ pentest_crew/
 │           ├── coverage_gap_tools.py     # OWASP Top 10 coverage matrix, WSTG mapping, gap report
 │           ├── stateful_testing_tools.py  # Session fixation, multi-step flow, OAuth flow, cookie persistence
 │           ├── fp_tracker_tools.py       # False positive tracker, differential reporting
-│           └── evidence_capture_tools.py  # PoC script generator, req/resp dumper, evidence bundler
+│           ├── evidence_capture_tools.py  # PoC script generator, req/resp dumper, evidence bundler
+│           ├── report_filter_tools.py     # Pre-report filtering, finding deduplication
+│           ├── exploit_chain_tools.py    # Exploit chain correlation and chaining
+│           ├── crlf_injection_tools.py   # HTTP response splitting, header injection
+│           ├── prototype_pollution_tools.py # JavaScript prototype pollution testing
+│           ├── cache_poisoning_tools.py   # Web cache poisoning and WebCache deception
+│           ├── postmessage_security_tools.py # Unsafe postMessage listener detection
+│           ├── ldap_injection_tools.py   # LDAP injection and blind LDAP injection
+│           └── s3_bucket_tools.py         # S3 bucket enumeration and S3 SSRF testing
 └── tests/
     ├── test_autorize_tools.py              # Session swap, bypass detection, verdicts
     ├── test_burp_request_tools.py          # HTTP parsing, Intruder, HTTP/2 headers
     ├── test_advanced_security_tool_regressions.py # Security tool regression tests
     ├── test_burp_safe_outputs.py            # Safe output verification
     ├── test_crew_smoke.py                  # CrewAI initialization, LLM selection, single/multi mode
-    └── test_main.py                        # Env validation, input building, LLM mode
+    ├── test_main.py                        # Env validation, input building, LLM mode
+    ├── test_exploit_chains.py              # Exploit chain correlation
+    ├── test_pipeline_gates.py              # Pipeline gate skipping logic
+    └── test_report_filter.py               # Report filtering and deduplication
 ```
 
 ---
@@ -346,7 +403,7 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 | **Tasks** | `pentest_task` (1) | 8 tasks |
 | **Pipeline** | All 4 stages in 1 agent | Sequential 8-stage pipeline |
 | **LLM Providers** | 1 | Each agent uses preferred provider (with fallback) |
-| **Tool Access** | ALL_TOOLS (107 tools) | Tool groups scoped per role |
+| **Tool Access** | ALL_TOOLS (118 tools) | Tool groups scoped per role |
 | **Specialist Expertise** | ❌ 1 model for all roles | ✅ 8 expert models, each in domain |
 | **Context Overflow Risk** | ⚠️ High (4 stages in 1 context) | ✅ Low (each agent has small context) |
 | **Parallel LLM** | ❌ Sequential | ✅ Each agent runs with its own model |
@@ -394,6 +451,14 @@ Enabled via `STEALTH_MODE=true` in `.env`. Before each Burp MCP tool call:
 
 Evidence bundles stored in `evidence_store/<engagement_id>_<finding_id>.json`.
 
+### Exploit Chain Correlation
+
+`exploit_chain_correlator` (EXPLOITATION_TOOLS) — identifies multi-step exploit chains across findings. Correlates SSRF → IAM credential access → internal service enumeration → data exfiltration. Generates combined CVSS and attack path narrative.
+
+### Pipeline Gates
+
+`pipeline_gates.py` pre-flight checks enable the multi-agent pipeline to skip stages when preconditions aren't met (empty scope, no auth tokens, no parameters). Reduces unnecessary LLM calls and token spend on early stages with no actionable work.
+
 ---
 
 ## Recommended Workflow
@@ -426,8 +491,9 @@ The configuration is intentionally conservative:
 - findings require observable evidence — no theoretical flagging
 - Intruder is treated as review/handoff, not automated fuzzing
 - unsupported cases route to `NEEDS_ESCALATION`
-- Autorize bypass detection uses relative body delta (< 2%) + structural content matching to minimize false negatives
-- hard bypass: attacker succeeds (HTTP 200, non-empty body) while victim is denied (non-200) = confirmed broken access control
+- Autorize bypass detection uses normalized body match + JSON field count equivalence to minimize false positives; hard bypass: attacker succeeds (HTTP 200, non-empty body) while victim is denied (non-200) = confirmed broken access control
+- XSS detection uses structural unencoded reflection checks (exact match, not case-insensitive) to avoid false positives from safely HTML-encoded inputs
+- SQL UNION detection requires DB fingerprint alongside response changes (not generic numeric patterns that match all API responses)
 
 ---
 

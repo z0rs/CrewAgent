@@ -262,3 +262,103 @@ def test_dangerous_burp_admin_tools_are_not_in_autonomous_groups():
         assert forbidden not in reviewer_names
         assert forbidden not in all_names
         assert forbidden in admin_names
+
+
+# ── Tool Router Tests ─────────────────────────────────────────────────────────
+
+from pentest_crew.tools import (
+    CORE_EXECUTOR_TOOLS,
+    TOOL_CATEGORIES,
+    _CATEGORY_ALIASES,
+    get_executor_tools,
+    resolve_category,
+)
+
+
+def test_tool_router_core_tools_cover_essential_operations():
+    """Core tools must include request execution, collaborator, encoding, autorize."""
+    core_names = {tool.name for tool in CORE_EXECUTOR_TOOLS}
+    essential = {
+        "send_http1_request", "send_http2_request", "create_repeater_tab",
+        "generate_collaborator_payload", "poll_collaborator_with_wait",
+        "autorize_check", "base64_encode", "url_encode",
+    }
+    assert essential.issubset(core_names)
+
+
+def test_tool_router_get_executor_tools_no_categories_returns_core_only():
+    tools = get_executor_tools(None)
+    names = {t.name for t in tools}
+    core_names = {t.name for t in CORE_EXECUTOR_TOOLS}
+    assert names == core_names
+
+
+def test_tool_router_get_executor_tools_empty_list_returns_core_only():
+    tools = get_executor_tools([])
+    names = {t.name for t in tools}
+    core_names = {t.name for t in CORE_EXECUTOR_TOOLS}
+    assert names == core_names
+
+
+def test_tool_router_get_executor_tools_adds_category_tools():
+    tools = get_executor_tools(["sqli"])
+    names = {t.name for t in tools}
+    assert "sql_injection_error_test" in names
+    assert "sql_data_extraction" in names
+    # XSS tools should NOT be included
+    assert "xss_context_test" not in names
+
+
+def test_tool_router_get_executor_tools_multiple_categories():
+    tools = get_executor_tools(["sqli", "xss", "ssrf"])
+    names = {t.name for t in tools}
+    assert "sql_injection_error_test" in names
+    assert "xss_context_test" in names
+    assert "ssrf_test" in names
+    # XXE should NOT be included
+    assert "xxe_test" not in names
+
+
+def test_tool_router_no_duplicate_tools():
+    tools = get_executor_tools(["sqli", "xss", "ssrf", "idor", "auth"])
+    names = [t.name for t in tools]
+    assert len(names) == len(set(names))
+
+
+def test_tool_router_resolve_category_known():
+    assert resolve_category("sqli") == "sqli"
+    assert resolve_category("xss") == "xss"
+    assert resolve_category("ssrf") == "ssrf"
+
+
+def test_tool_router_resolve_category_aliases():
+    # Normalization: lowercase, spaces/hyphens → underscores
+    assert resolve_category("sql_injection") == "sqli"
+    assert resolve_category("SQL Injection") == "sqli"  # normalized to sql_injection
+    assert resolve_category("cross-site scripting") == "xss"  # normalized to cross_site_scripting
+    assert resolve_category("server-side request forgery") == "ssrf"
+    assert resolve_category("idor") == "idor"
+    assert resolve_category("insecure_direct_object_reference") == "idor"
+    assert resolve_category("open_redirect") == "redirect"
+
+
+def test_tool_router_resolve_category_unknown_returns_none():
+    assert resolve_category("nonexistent_vuln") is None
+    assert resolve_category("") is None
+
+
+def test_tool_router_all_categories_have_tools():
+    for cat, tools in TOOL_CATEGORIES.items():
+        assert len(tools) > 0, f"Category '{cat}' has no tools"
+
+
+def test_tool_router_full_coverage_equals_executor_tools():
+    """get_executor_tools with all categories should cover all EXECUTOR_TOOLS
+    except those that are intentionally in CORE_EXECUTOR_TOOLS (already included)."""
+    all_cats = list(TOOL_CATEGORIES.keys())
+    tools = get_executor_tools(all_cats)
+    router_names = {t.name for t in tools}
+    executor_names = {t.name for t in EXECUTOR_TOOLS}
+    # All executor tools should be reachable via the router (core + categories)
+    missing = executor_names - router_names
+    assert missing == set(), f"Tools not reachable via router: {missing}"

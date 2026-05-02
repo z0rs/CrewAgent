@@ -116,11 +116,14 @@ def test_ssrf_blind_test_polls_generated_collaborator_payload_id():
     mock_client.call.side_effect = [
         {"payload": "abc.oast.test", "payloadId": "payload-123"},
         {"statusCode": 200, "body": "ok"},
-        {"interactions": [{"type": "DNS", "timestamp": "now", "clientIp": "127.0.0.1"}]},
     ]
+    # Adaptive polling uses call_with_retry for the poll
+    mock_client.call_with_retry.return_value = {
+        "interactions": [{"type": "DNS", "timestamp": "now", "clientIp": "127.0.0.1"}],
+    }
 
-    with patch("pentest_crew.tools.ssrf_tools.time.sleep", return_value=None), \
-         patch("pentest_crew.tools.ssrf_tools.get_client", return_value=mock_client):
+    with patch("pentest_crew.tools.ssrf_tools.get_client", return_value=mock_client), \
+         patch("pentest_crew.tools.burp_collaborator_tools.get_client", return_value=mock_client):
         result = json.loads(
             tool._run(
                 host="target.example.com",
@@ -128,14 +131,14 @@ def test_ssrf_blind_test_polls_generated_collaborator_payload_id():
                 use_https=True,
                 raw_request="GET /fetch?url=https://example.com HTTP/1.1\r\nHost: target.example.com\r\n\r\n",
                 vulnerable_param="url",
-                wait_seconds=0,
+                wait_seconds=10,
             )
         )
 
-    called_tools = [call.args[0] for call in mock_client.call.call_args_list]
-    poll_args = mock_client.call.call_args_list[2].args[1]
-    assert "poll_collaborator_with_wait" not in called_tools
-    assert poll_args == {"payloadId": "payload-123"}
+    # Verify poll was scoped to the generated payload ID
+    poll_call = mock_client.call_with_retry.call_args
+    assert poll_call[0][0] == "get_collaborator_interactions"
+    assert poll_call[0][1] == {"payloadId": "payload-123"}
     assert result["poll_scoped_to_payload"] is True
     assert result["interactions_found"] is True
 
@@ -145,7 +148,10 @@ def test_jwt_manipulate_replays_none_algorithm_token():
     raw_request = f"GET /me HTTP/1.1\r\nHost: api.example.com\r\nAuthorization: Bearer {token}\r\n\r\n"
     tool = JWTManipulateTool()
     mock_client = MagicMock()
-    mock_client.call.return_value = {"statusCode": 200, "body": '{"ok":true}'}
+    mock_client.call.return_value = {
+        "statusCode": 200,
+        "body": '{"user_id": 123, "email": "test@example.com", "role": "admin"}',
+    }
 
     with patch("pentest_crew.tools.jwt_security_tools.get_client", return_value=mock_client):
         result = json.loads(
@@ -161,8 +167,12 @@ def test_jwt_manipulate_replays_none_algorithm_token():
         )
 
     sent_request = mock_client.call.call_args.args[1]["content"]
-    assert '"algorithm": "none"' in json.dumps(result["tokens_tested"])
-    assert result["successful_modifications"]
+    # None algorithm token must appear in tokens_tested
+    assert any(
+        t.get("algorithm") == "none" for t in result["tokens_tested"]
+    ), f"tokens_tested: {result['tokens_tested']}"
+    # With authenticated-content response (user_id, email, role in body), tool confirms the bypass.
+    assert result["successful_modifications"], f"successful_modifications was: {result['successful_modifications']}"
     assert "Bearer " in sent_request
     assert sent_request != raw_request
 
