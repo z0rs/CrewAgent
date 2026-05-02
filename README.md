@@ -18,11 +18,11 @@ Uses one LLM to run all 4 stages sequentially in a single agent (`pentester`).
 |--------|--------|
 | **Active Agent** | `pentester` (1 agent) |
 | **Active Task** | `pentest_task` (1 unified task) |
-| **Tools** | ALL_TOOLS — all 118 tools available |
+| **Tools** | ALL_TOOLS — all 121 tools available |
 | **Scope** | HTTP triage → Validation → QA Review → Report Generation |
 | **Pipeline** | All 4 stages in 1 agent, 1 context window |
 
-**Pentester's tool access**: All 118 tools from every tool group. Pentester has full access to scope discovery, HTTP analysis, auth testing, fuzzing, validation, QA review, exploitation, and evidence capture.
+**Pentester's tool access**: All 121 tools from every tool group.
 
 ### Multi-Agent Mode (2+ API keys)
 
@@ -48,12 +48,12 @@ scope_discovery_agent → http_analyst → auth_agent → fuzzing_agent
 
 | # | Agent | Mode | Task | Tools | Role |
 |---|-------|------|------|-------|------|
-| 1 | `pentester` | Single | `pentest_task` | ALL (118) | All 4 stages in one agent |
+| 1 | `pentester` | Single | `pentest_task` | ALL (121) | All 4 stages in one agent |
 | 2 | `scope_discovery_agent` | Multi | `scope_discovery_task` | 11 | Target discovery without existing traffic |
 | 3 | `http_analyst` | Multi | `http_triage_task` | 17 | HTTP history triage, finding candidates |
 | 4 | `auth_agent` | Multi | `auth_task` | 8 | Auth endpoint discovery, session extraction |
 | 5 | `fuzzing_agent` | Multi | `fuzzing_task` | 9 | Parameter auto-fuzzing, anomaly detection |
-| 6 | `validation_executor` | Multi | `validation_task` | 105 | Vulnerability validation, Repeater/Collaborator/Autorize |
+| 6 | `validation_executor` | Multi | `validation_task` | 108 | Vulnerability validation, Repeater/Collaborator/Autorize |
 | 7 | `lead_pentester` | Multi | `qa_review_task` | 14 | QA review, CVSS scoring, coverage analysis |
 | 8 | `exploitation_agent` | Multi | `exploitation_task` | 16 | Post-confirmation data extraction |
 | 9 | `report_generator` | Multi | `report_generation_task` | 5 | Final client-ready report |
@@ -68,7 +68,7 @@ scope_discovery_agent → http_analyst → auth_agent → fuzzing_agent
 | `http_analyst` | ANALYST_TOOLS | 17 | `get_proxy_http_history`, `search_proxy_http_history`, `get_scanner_issues`, `auth_endpoint_discovery`, `credential_extraction`, `session_token_extraction` |
 | `auth_agent` | AUTH_TOOLS | 8 | `auth_endpoint_discovery`, `credential_extraction`, `session_token_extraction`, `auto_login_test`, `send_http1_request` |
 | `fuzzing_agent` | FUZZING_TOOLS | 9 | `param_discovery`, `param_fuzzer`, `param_typer`, `fuzzing_combo`, `send_to_intruder` |
-| `validation_executor` | EXECUTOR_TOOLS | 105 | SSRF, GraphQL, XSS, JWT, SQLi, XXE, Command Injection, WebSocket, DOM XSS, Request Smuggling, Business Logic, CRLF Injection, Prototype Pollution, Cache Poisoning, postMessage Security, LDAP Injection, S3 Bucket Enum, Redirect/CORS, Stateful Testing, Fuzzing, Data Extraction |
+| `validation_executor` | EXECUTOR_TOOLS | 108 | SSRF, GraphQL, XSS, JWT, SQLi, XXE, Command Injection, WebSocket, DOM XSS, Request Smuggling, Business Logic, CRLF Injection, Prototype Pollution, Cache Poisoning, postMessage Security, LDAP Injection, S3 Bucket Enum, Redirect/CORS, Stateful Testing, Fuzzing, Deserialization, Data Extraction |
 | `lead_pentester` | REVIEWER_TOOLS | 14 | `coverage_gap_analyzer`, `session_fixation_test`, `multi_step_flow_test`, `oauth_flow_test`, `cookie_persistence_test`, `false_positive_tracker`, `differential_reporting` |
 | `exploitation_agent` | EXPLOITATION_TOOLS | 16 | `sql_data_extraction`, `idor_data_extraction`, `ssrf_data_extraction`, `jwt_data_extraction`, `generic_data_extract`, `autorize_check`, `exploit_chain_correlator` |
 | `report_generator` | REPORTER_TOOLS | 5 | `poc_script_generator`, `request_response_dumper`, `evidence_bundler`, `filter_report_input`, `differential_reporting` |
@@ -82,10 +82,10 @@ The validation executor uses `TOOL_CATEGORIES` for dynamic tool composition base
 | Category | Tools |
 |----------|-------|
 | `sqli` | SQL injection error, blind, union, boolean blind, stacked queries, full test, data extraction |
-| `xss` | Context test, WAF bypass, comprehensive, DOM XSS variants |
-| `ssrf` | Basic, metadata enum, protocol test, blind, data extraction |
+| `xss` | Context test, WAF bypass (14-layer), comprehensive, DOM XSS variants |
+| `ssrf` | Basic, metadata enum (12 cloud providers), protocol test, blind, data extraction |
 | `xxe` | Test, blind, billion laughs, XInclude, full test |
-| `cmd_injection` | Test, blind, output extraction, encoded, full test |
+| `cmd_injection` | Test, blind, output extraction, encoded, full test, OOB Collaborator exfil |
 | `graphql` | Introspection, enum brute, alias abuse, batch bypass, IDOR, depth attack |
 | `jwt` | Analysis, none bypass, manipulate, alg confusion, data extraction |
 | `smuggling` | Request smuggling, CL.0, TE/TE, HTTP/2 |
@@ -101,6 +101,7 @@ The validation executor uses `TOOL_CATEGORIES` for dynamic tool composition base
 | `postmessage` | postMessage listener security test |
 | `ldap` | LDAP injection, blind LDAP injection |
 | `s3` | S3 bucket enumeration, S3 SSRF test |
+| `deserialization` | PHP OI detect, Java JNDI OOB, Python pickle exploit, YAML unsafe exploit |
 | `extraction` | Generic data extraction |
 
 ---
@@ -166,7 +167,7 @@ This repository covers all tools exposed by the Burp MCP server:
          - Validation
          - QA Review
          - Report Generation
-         - All 118 tools
+         - All 121 tools
 ```
 
 ### Multi-Agent Mode (2+ API keys)
@@ -192,12 +193,13 @@ This repository covers all tools exposed by the Burp MCP server:
         Parameter auto-fuzzing, anomaly detection
                |
                v
-      [validation_executor] ← specialist, 105 tools
+      [validation_executor] ← specialist, 108 tools
          HTTP replay, Collaborator, Autorize, SSRF, XSS,
          SQLi, XXE, JWT, Command Injection, WebSocket,
          Request Smuggling, Business Logic, CRLF Injection,
          Prototype Pollution, Cache Poisoning, postMessage Security,
-         LDAP Injection, S3 Bucket Enum, Stateful Testing
+         LDAP Injection, S3 Bucket Enum, Stateful Testing,
+         Deserialization, Data Extraction
                |
                v
        [lead_pentester]
@@ -258,17 +260,17 @@ pentest_crew/
 │           ├── burp_collaborator_tools.py # OOB testing, encoding, random
 │           ├── burp_config_tools.py    # Project/user options, scanner engine
 │           ├── autorize_tools.py        # Session-swap bypass detection
-│           ├── ssrf_tools.py            # SSRF testing (basic/metadata/protocol/blind)
+│           ├── ssrf_tools.py            # SSRF testing (basic/metadata/protocol/blind, 12 cloud providers)
 │           ├── graphql_security_tools.py # GraphQL introspection, alias abuse, batch bypass, IDOR, depth attack
-│           ├── xss_bypass_tools.py      # XSS context test, WAF bypass, comprehensive
+│           ├── xss_bypass_tools.py      # XSS context test, WAF bypass (14-layer), comprehensive
 │           ├── jwt_security_tools.py    # JWT analysis, none bypass, manipulate, alg confusion
 │           ├── request_smuggling_tools.py # CL.0, TE/TE, HTTP/2 smuggling
 │           ├── business_logic_tools.py   # Race condition, parameter pollution, mass assignment, OTP bypass, coupon bypass
 │           ├── redirect_and_cors_tools.py # Open redirect, host header injection, CORS misconfig, URL pollution
-│           ├── sql_injection_tools.py    # SQLi error, blind, union, boolean blind, stacked queries, full test
+│           ├── sql_injection_tools.py    # SQLi error, blind, union, boolean blind, stacked queries, full test, WAF bypass
 │           ├── xxe_tools.py              # XXE test, blind, billion laughs, XInclude, full test
 │           ├── websocket_security_tools.py # WS handshake, injection, frame injection, CSWSH, fuzzer, full test
-│           ├── command_injection_tools.py # Cmd injection test, blind, output extraction, encoded, full test
+│           ├── command_injection_tools.py # Cmd injection test, blind, output extraction, encoded, full test, OOB exfil
 │           ├── dom_xss_tools.py          # DOM XSS test, taint track, fragment test, full test
 │           ├── exploitation_tools.py    # SQL/IDOR/SSRF/JWT/generic data extraction
 │           ├── auth_tools.py             # Auth endpoint discovery, credential extraction, session token, auto login
@@ -285,7 +287,8 @@ pentest_crew/
 │           ├── cache_poisoning_tools.py   # Web cache poisoning and WebCache deception
 │           ├── postmessage_security_tools.py # Unsafe postMessage listener detection
 │           ├── ldap_injection_tools.py   # LDAP injection and blind LDAP injection
-│           └── s3_bucket_tools.py         # S3 bucket enumeration and S3 SSRF testing
+│           ├── s3_bucket_tools.py         # S3 bucket enumeration and S3 SSRF testing
+│           └── deserialization_tools.py  # PHP OI, Java JNDI/LDAP, Python pickle, YAML unsafe_load detection/OOB/exploit
 └── tests/
     ├── test_autorize_tools.py              # Session swap, bypass detection, verdicts
     ├── test_burp_request_tools.py          # HTTP parsing, Intruder, HTTP/2 headers
@@ -295,7 +298,8 @@ pentest_crew/
     ├── test_main.py                        # Env validation, input building, LLM mode
     ├── test_exploit_chains.py              # Exploit chain correlation
     ├── test_pipeline_gates.py              # Pipeline gate skipping logic
-    └── test_report_filter.py               # Report filtering and deduplication
+    ├── test_report_filter.py               # Report filtering and deduplication
+    └── test_deserialization_tools.py       # Deserialization detect/OOB/exploit tools (31 tests)
 ```
 
 ---
@@ -403,7 +407,7 @@ pandoc reports/pentest_report_ENG-001.md -o reports/pentest_report_ENG-001.docx
 | **Tasks** | `pentest_task` (1) | 8 tasks |
 | **Pipeline** | All 4 stages in 1 agent | Sequential 8-stage pipeline |
 | **LLM Providers** | 1 | Each agent uses preferred provider (with fallback) |
-| **Tool Access** | ALL_TOOLS (118 tools) | Tool groups scoped per role |
+| **Tool Access** | ALL_TOOLS (121 tools) | Tool groups scoped per role |
 | **Specialist Expertise** | ❌ 1 model for all roles | ✅ 8 expert models, each in domain |
 | **Context Overflow Risk** | ⚠️ High (4 stages in 1 context) | ✅ Low (each agent has small context) |
 | **Parallel LLM** | ❌ Sequential | ✅ Each agent runs with its own model |
@@ -492,8 +496,9 @@ The configuration is intentionally conservative:
 - Intruder is treated as review/handoff, not automated fuzzing
 - unsupported cases route to `NEEDS_ESCALATION`
 - Autorize bypass detection uses normalized body match + JSON field count equivalence to minimize false positives; hard bypass: attacker succeeds (HTTP 200, non-empty body) while victim is denied (non-200) = confirmed broken access control
-- XSS detection uses structural unencoded reflection checks (exact match, not case-insensitive) to avoid false positives from safely HTML-encoded inputs
-- SQL UNION detection requires DB fingerprint alongside response changes (not generic numeric patterns that match all API responses)
+- XSS detection uses structural unencoded reflection checks (exact match, not case-insensitive) to avoid false positives from safely HTML-encoded inputs; WAF bypass coverage spans 14 layers including AngularJS CSTI, mXSS SVG mutation, DOMPurify bypasses, and CSP eval constructor
+- SQL UNION detection requires DB fingerprint alongside response changes (not generic numeric patterns that match all API responses); payloads hardened with 10-layer WAF bypass (MySQL version comments, inline comments, hex, URL, whitespace, null byte, Unicode, case variation, double-URL encoding)
+- SSRF metadata enumeration covers 12 cloud providers (AWS/GCP/Azure, DigitalOcean, Hetzner, Oracle Cloud, Linode, Alibaba, Tencent, Kubernetes, OpenStack, Packet, Azure Arc)
 
 ---
 
